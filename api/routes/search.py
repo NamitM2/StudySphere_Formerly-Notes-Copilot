@@ -1,58 +1,57 @@
+# api/routes/search.py
+
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any, List
-from core.pdf import pdf_bytes_to_texts
+
+from core.pdf import extract_text_from_pdf
 from core.chunk import split_text
+from core.embed import embed_chunks
+from api.dependencies import vector_index
+
+class SearchRequest(BaseModel):
+    query: str
 
 router = APIRouter()
 
-class Query(BaseModel):
-    q: str
-    k: int = 5
-
 @router.post("/ingest")
-async def ingest(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """
-    Upload a PDF or text file.
-    - PDF: extract page texts, then split into chunks.
-    - TXT/MD: read bytes as utf-8, then split into chunks.
-    Returns counts so we can verify the pipeline is alive.
-    """
-    data = await file.read()
-    name = (file.filename or "").lower()
+async def ingest(file: UploadFile = File(...)):
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    if name.endswith(".pdf"):
-        pages: List[str] = pdf_bytes_to_texts(data)
+    try:
+        pdf_bytes = await file.read()
+        pages = extract_text_from_pdf(pdf_bytes)
         if not pages:
-            raise HTTPException(status_code=400, detail="No text extracted from PDF.")
-        chunks: List[str] = []
-        for p in pages:
-            chunks.extend(split_text(p, max_chars=800))
+            raise HTTPException(status_code=404, detail="No text found in PDF.")
+        
+        full_text = "\n".join(pages)
+        chunks = split_text(full_text)
+        embeddings = embed_chunks(chunks)
+        
+        vector_index.add(embeddings=embeddings, chunks=chunks)
+        
         return {
             "ok": True,
             "filename": file.filename,
-            "filetype": "pdf",
-            "pages": len(pages),
-            "chunks": len(chunks)
+            "chunks_added": len(chunks),
+            "vectors_in_index": vector_index.index.ntotal
         }
-
-    elif name.endswith(".txt") or name.endswith(".md"):
-        try:
-            text = data.decode("utf-8", errors="ignore")
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Decode error: {e}")
-        chunks = split_text(text, max_chars=800)
-        return {
-            "ok": True,
-            "filename": file.filename,
-            "filetype": "text",
-            "chunks": len(chunks)
-        }
-
-    else:
-        raise HTTPException(status_code=415, detail="Unsupported file type. Use .pdf, .txt, or .md.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @router.post("/search")
-async def search(query: Query):
-    # Retrieval + answer composing will be added after we build an index.
-    return {"answer": "TODO", "citations": []}
+async def search(request: SearchRequest):
+    """
+    Receives a query, embeds it, searches the index, and returns the top results.
+    """
+    # 1. Embed the user's query.
+    query_embedding = embed_chunks([request.query])[0]
+    
+    # 2. Search the vector index for the top 3 most similar chunks.
+    results = vector_index.search(query_vector=query_embedding, k=3)
+    
+    # 3. Return the results.
+    return {
+        "ok": True,
+        "results": results
+    }
