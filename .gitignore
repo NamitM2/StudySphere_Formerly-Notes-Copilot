@@ -11,3 +11,5 @@ __pycache__/
 # Database and Index files
 *.db
 *.bin
+.startup
+Startup.txt

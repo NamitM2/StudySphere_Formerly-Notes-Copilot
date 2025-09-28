@@ -1,5 +1,0 @@
-.\.venv\Scripts\python -m uvicorn api.main:app --reload
-.\.venv\Scripts\streamlit run ui/app.py
-
-Edit the model from pro 2.5, way overkill and takes too long to thing for the app. Use a flash model instead.
-Upgrade the frontend completely and prepare for deployment
