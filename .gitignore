@@ -7,3 +7,7 @@ __pycache__/
 
 # Environment variables
 .env
+
+# Database and Index files
+*.db
+*.bin

@@ -1,14 +1,14 @@
-from typing import List
+# core/chunk.py
 
-def split_text(text: str, max_chars: int = 800) -> List[str]:
-    chunks, buf = [], []
-    for para in text.split("\n\n"):
-        if sum(len(x) for x in buf) + len(para) + 2 <= max_chars:
-            buf.append(para)
-        else:
-            if buf:
-                chunks.append("\n\n".join(buf))
-            buf = [para]
-    if buf:
-        chunks.append("\n\n".join(buf))
+def split_text(text: str) -> list[str]:
+    """
+    Splits the text by lines and filters out empty or very short lines.
+    """
+    # Split the text by single newlines.
+    lines = text.split('\n')
+    
+    # Use a list comprehension to create a list of non-empty, stripped lines.
+    # We'll filter out any lines that are shorter than, say, 5 characters.
+    chunks = [line.strip() for line in lines if len(line.strip()) > 5]
+    
     return chunks

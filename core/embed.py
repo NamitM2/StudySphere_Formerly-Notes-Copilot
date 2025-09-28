@@ -23,7 +23,9 @@ print("Loading embedding model (this may take a moment)...")
 # and efficient pre-trained model. The first time this line runs, the library
 # will automatically download the model files (about 227MB) from the internet
 # and store them on your computer for future use.
-model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# OLD: model = SentenceTransformer('multi-qa-MiniLM-L6-cos-v1')
+model = SentenceTransformer('all-mpnet-base-v2') # NEW & MORE POWERFUL
 
 print("Embedding model loaded successfully.")
 
