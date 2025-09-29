@@ -1,81 +1,140 @@
 # core/index.py
-
-import faiss
+from __future__ import annotations
+from typing import List, Sequence, Union
 import numpy as np
-import sqlite3
-import os
-from typing import List
+import faiss
+from sklearn.metrics.pairwise import cosine_similarity
 
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.path.join(DATA_DIR, "chunks.db")
-FAISS_INDEX_PATH = os.path.join(DATA_DIR, "faiss_index.bin")
+NDArray = np.ndarray
+
+
+def _l2norm(a: NDArray) -> NDArray:
+    return a / (np.linalg.norm(a, axis=1, keepdims=True) + 1e-12)
+
 
 class VectorIndex:
-    def __init__(self, dimension: int):
-        print(f"--- DEBUG: VectorIndex __init__ called with dimension: {dimension} ---")
-        self.dimension = dimension
-        self.conn = sqlite3.connect(DB_PATH)
-        self.create_table()
-        self.chunks: List[str] = self._load_all_chunks()
-        if os.path.exists(FAISS_INDEX_PATH):
-            print(f"DEBUG: Loading existing FAISS index from {FAISS_INDEX_PATH}")
-            self.index = faiss.read_index(FAISS_INDEX_PATH)
-            print(f"DEBUG: Loaded index has dimension: {self.index.d}")
-            if self.index.d != self.dimension:
-                print(f"--- DEBUG: MISMATCH FOUND! RUNNING CLEAR() ---")
-                self.clear()
-        else:
-            print(f"--- DEBUG: CREATING NEW FAISS INDEX ---")
-            self.index = faiss.IndexFlatL2(self.dimension)
-            print(f"DEBUG: New index created with dimension: {self.index.d}")
+    """
+    Minimal, robust FAISS wrapper with MMR reranking that uses the TRUE query
+    for relevance and penalizes redundancy. If you add vectors/chunks in order,
+    FAISS ids == insertion order == chunk indices.
+    """
 
-    # ... (rest of the file is the same, I am just showing the top part) ...
+    def __init__(self, dim: int | None = None, metric: str = "ip", **kwargs):
+        """
+        metric: "ip" (Inner Product) or "l2"
+        Accepts both dim= and dimension= for backward compatibility.
+        """
+        if dim is None and "dimension" in kwargs:
+            dim = int(kwargs["dimension"])
+        if dim is None:
+            raise ValueError("VectorIndex: you must provide dim (or dimension).")
 
-    def _load_all_chunks(self) -> List[str]:
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT text FROM chunks ORDER BY id ASC")
-        return [row[0] for row in cursor.fetchall()]
+        self.dim = int(dim)
+        metric = metric.lower()
+        if metric not in {"ip", "l2"}:
+            raise ValueError("metric must be 'ip' or 'l2'")
+        self.metric = metric
+        self.index = faiss.IndexFlatIP(self.dim) if metric == "ip" else faiss.IndexFlatL2(self.dim)
+        self.chunks: List[str] = []
 
-    def create_table(self):
-        cursor = self.conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, text TEXT NOT NULL)")
-        self.conn.commit()
+    # ---------------------------
+    # Building / adding vectors
+    # ---------------------------
+    def add(self, vectors: NDArray, chunks: Sequence[str]) -> None:
+        """
+        Add a batch of vectors with matching chunk texts.
+        - vectors: shape [N, dim]
+        - chunks:  length N
+        """
+        if len(chunks) == 0:
+            return
+        vectors = np.asarray(vectors, dtype="float32")
+        if vectors.ndim != 2 or vectors.shape[1] != self.dim:
+            raise ValueError(f"vectors must be [N,{self.dim}] float32")
 
-    def add(self, embeddings: List[List[float]], chunks: List[str]):
-        embeddings_np = np.array(embeddings).astype('float32')
-        print(f"--- DEBUG: ADDING DATA ---")
-        print(f"DEBUG: Dimension of index BEFORE add: {self.index.d}")
-        print(f"DEBUG: Dimension of new vectors to add: {embeddings_np.shape[1]}")
-        self.index.add(embeddings_np)
-        cursor = self.conn.cursor()
-        for chunk in chunks:
-            cursor.execute("INSERT INTO chunks (text) VALUES (?)", (chunk,))
-        self.conn.commit()
-        self.chunks.extend(chunks)
-        faiss.write_index(self.index, FAISS_INDEX_PATH)
+        if self.metric == "ip":
+            vectors = _l2norm(vectors)  # IP == cosine if normalized
 
-    def search(self, query_vector: List[float], k: int) -> List[str]:
-        query_np = np.array([query_vector]).astype('float32')
-        distances, indices = self.index.search(query_np, k)
-        results = []
-        for i in indices[0]:
-            if i >= 0 and i < len(self.chunks):
-                start_index = max(0, i - 1)
-                end_index = min(len(self.chunks), i + 2)
-                context_chunk = " ... ".join(self.chunks[start_index:end_index])
-                results.append(context_chunk)
+        self.index.add(vectors)
+        self.chunks.extend(list(chunks))
+
+    @property
+    def ntotal(self) -> int:
+        return int(self.index.ntotal)
+
+    def reconstruct(self, i: int) -> NDArray:
+        return self.index.reconstruct(int(i))
+
+    # ---------------------------
+    # Search + MMR rerank
+    # ---------------------------
+    def search(
+        self,
+        query_vector: Union[NDArray, Sequence[float]],
+        k: int,
+        diversity: float = 0.75,
+    ) -> List[str]:
+        """
+        Return up to k context windows (prev/current/next joined with " ... ").
+        Steps:
+          1) Pull a candidate pool from FAISS.
+          2) Compute cosine relevance to the TRUE query (not a passage).
+          3) MMR to reduce redundancy.
+        """
+        if self.ntotal == 0:
+            return []
+
+        q = np.asarray(query_vector, dtype="float32").reshape(1, -1)
+        if q.shape[1] != self.dim:
+            raise ValueError(f"query_vector must have dim {self.dim}")
+
+        # For FAISS initial search, match index preprocessing
+        q_faiss = _l2norm(q) if self.metric == "ip" else q
+
+        # 1) Candidate pool
+        pool = min(max(k * 5, k), self.ntotal)
+        dists, ids = self.index.search(q_faiss, pool)
+        cand_ids = [int(i) for i in ids[0] if i != -1]
+        if not cand_ids:
+            return []
+
+        # Reconstruct candidate vectors for consistent cosine scoring
+        cand_vecs = np.array([self.reconstruct(i) for i in cand_ids], dtype="float32")
+
+        # 2) Relevance to the TRUE query via cosine
+        q_cos = _l2norm(q)  # always normalize for cosine here
+        c_cos = _l2norm(cand_vecs)
+        rel = cosine_similarity(q_cos, c_cos)[0]  # shape [pool]
+        order = np.argsort(-rel)                  # descending relevance
+
+        # Seed with most relevant
+        selected_pos: List[int] = [int(order[0])]
+        selected_ids: List[int] = [cand_ids[selected_pos[0]]]
+
+        # 3) MMR loop
+        while len(selected_ids) < min(k, len(cand_ids)):
+            seln = c_cos[selected_pos]  # already-selected normalized vecs
+            best_j = None
+            best_score = -1e9
+
+            for j in range(len(cand_ids)):
+                if j in selected_pos:
+                    continue
+                r = float(rel[j])  # relevance to query
+                red = float(np.max(cosine_similarity(c_cos[j:j + 1], seln)))  # redundancy
+                mmr = diversity * r - (1.0 - diversity) * red
+                if mmr > best_score:
+                    best_score = mmr
+                    best_j = j
+
+            selected_pos.append(int(best_j))
+            selected_ids.append(cand_ids[int(best_j)])
+
+        # 4) Build small windows around each selected chunk
+        results: List[str] = []
+        for idx in selected_ids:
+            start = max(0, idx - 1)
+            end = min(len(self.chunks), idx + 2)
+            results.append(" ... ".join(self.chunks[start:end]))
         return results
 
-    def clear(self):
-        print(f"--- DEBUG: CLEARING INDEX ---")
-        print(f"DEBUG: self.dimension is {self.dimension}")
-        self.index = faiss.IndexFlatL2(self.dimension)
-        print(f"DEBUG: Index recreated. New dimension is: {self.index.d}")
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM chunks")
-        self.conn.commit()
-        self.chunks = []
-        if os.path.exists(FAISS_INDEX_PATH):
-            os.remove(FAISS_INDEX_PATH)
-        print("--- DEBUG: CLEAR COMPLETE ---")

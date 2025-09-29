@@ -1,14 +1,30 @@
 # core/chunk.py
+from __future__ import annotations
+import re
+from typing import List
 
-def split_text(text: str) -> list[str]:
+
+def _normalize(s: str) -> str:
+    s = s.replace("\u2013", "-").replace("\u2014", "-")
+    s = re.sub(r"[ \t]+", " ", s)
+    return s.strip()
+
+
+def split_text(text: str, max_chars: int = 900, overlap: int = 150) -> List[str]:
     """
-    Splits the text by lines and filters out empty or very short lines.
+    Windowed chunking with overlap. Preserves context so entities like
+    'University of Illinois Urbana–Champaign' don't get split away.
     """
-    # Split the text by single newlines.
-    lines = text.split('\n')
-    
-    # Use a list comprehension to create a list of non-empty, stripped lines.
-    # We'll filter out any lines that are shorter than, say, 5 characters.
-    chunks = [line.strip() for line in lines if len(line.strip()) > 5]
-    
+    t = _normalize(text)
+    if not t:
+        return []
+    chunks: List[str] = []
+    start = 0
+    n = len(t)
+    while start < n:
+        end = min(n, start + max_chars)
+        chunks.append(t[start:end])
+        if end == n:
+            break
+        start = max(0, end - overlap)
     return chunks

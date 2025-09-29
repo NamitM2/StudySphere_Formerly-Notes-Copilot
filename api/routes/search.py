@@ -1,59 +1,40 @@
 # api/routes/search.py
+from __future__ import annotations
+from typing import List
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel
-
-from core.pdf import extract_text_from_pdf
-from core.chunk import split_text
-from core.embed import embed_chunks
-from core.generation import generate_answer
-from api.dependencies import vector_index
-
-class SearchRequest(BaseModel):
-    query: str
+from api.dependencies import embed_chunks, vector_index
+from core.generation import generate_json_answer
 
 router = APIRouter()
 
-@router.post("/ingest")
-async def ingest(file: UploadFile = File(...)):
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-    try:
-        pdf_bytes = await file.read()
-        pages = extract_text_from_pdf(pdf_bytes)
-        if not pages:
-            raise HTTPException(status_code=404, detail="No text found in PDF.")
-        
-        full_text = "\n".join(pages)
-        chunks = split_text(full_text)
-        embeddings = embed_chunks(chunks)
-        
-        vector_index.add(embeddings=embeddings, chunks=chunks)
-        
-        return {
-            "ok": True,
-            "filename": file.filename,
-            "chunks_added": len(chunks),
-            "vectors_in_index": vector_index.index.ntotal
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    enrich: bool = True
+    debug: bool = False
+
 
 @router.post("/search")
-async def search(request: SearchRequest):
-    # Step 1: Retrieve relevant chunks (the "context"). We use k=5 to get more context.
-    context_chunks = vector_index.search(query_vector=embed_chunks([request.query])[0], k=5)
-    
-    # Step 2: Generate a conversational answer using the retrieved context.
-    answer = generate_answer(query=request.query, context=context_chunks)
-    
-    # Step 3: Return the single, generated answer.
-    return {
-        "ok": True,
-        "answer": answer
-    }
+def search(req: SearchRequest):
+    """
+    Semantic search + LLM answer.
+    Returns {"answer": str} and, when debug=True, also {"contexts": [str]}.
+    """
+    # 1) embed the query
+    qv = embed_chunks([req.query])[0]
 
-@router.post("/clear")
-async def clear_index():
-    vector_index.clear()
-    return {"ok": True, "message": "Index cleared successfully."}
+    # 2) retrieve contexts with MMR inside the index
+    contexts: List[str] = vector_index.search(query_vector=qv, k=5, diversity=0.75)
+
+    # 3) generate
+    answer = generate_json_answer(
+        question=req.query,
+        contexts=contexts,
+        allow_enrichment=req.enrich,
+    )
+
+    if req.debug:
+        return {"answer": answer, "contexts": contexts}
+    return {"answer": answer}

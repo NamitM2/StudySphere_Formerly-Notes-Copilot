@@ -1,15 +1,47 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
 
-# Virtual Environment
+# Virtual env
 .venv/
+venv/
+ENV/
 
-# Environment variables
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*.log
+.vscode/settings.json
+.vscode/launch.json
+
+# We DO want tasks.json
+!.vscode/tasks.json
+
+# Streamlit
+.streamlit/
+ui/.streamlit/secrets.toml
+
+# Secrets
 .env
 
-# Database and Index files
+# Caches
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# Local data / uploads / indexes (if you output any)
+data/
+uploads/
+tmp/
 *.db
-*.bin
-.startup
-Startup.txt
+*.sqlite
+*.sqlite3
+*.faiss
