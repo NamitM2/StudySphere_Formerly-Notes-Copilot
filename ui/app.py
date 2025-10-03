@@ -1,254 +1,351 @@
 # ui/app.py
-# ---------------------------------------------------------------------
-# Notes Copilot — Streamlit UI (safe rerun, robust upload, debug contexts)
-# ---------------------------------------------------------------------
 from __future__ import annotations
-import os, json, hashlib, time
-from typing import Any, Dict, List, Optional, Tuple
+
+import io
+import os
+import json
 import requests
 import streamlit as st
 
-DEFAULT_API_URL = os.getenv("API_URL") or st.secrets.get("API_URL") or "http://localhost:8000"
-PAGE_TITLE = "Notes Copilot"
-st.set_page_config(page_title=PAGE_TITLE, page_icon="🗂️", layout="wide")
+# -----------------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------------
+API_URL = st.secrets.get("API_URL", os.getenv("API_URL", "http://localhost:8000")).rstrip("/")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", "")).rstrip("/")
+SUPABASE_ANON_KEY = st.secrets.get("SUPABASE_ANON_KEY", os.getenv("SUPABASE_ANON_KEY", ""))
 
-# --------- safe rerun helper (works on old/new Streamlit) ----------
-def safe_rerun():
+DOCS_CACHE_KEY = "docs_cache"
+DOCS_WARN_KEY = "docs_warn_before_delete"
+
+if "auth" not in st.session_state:
+    st.session_state["auth"] = {}
+
+# -----------------------------------------------------------------------------
+# Auth helpers
+# -----------------------------------------------------------------------------
+def _save_token(tok: dict):
+    st.session_state["auth"] = {
+        "access_token": tok.get("access_token"),
+        "refresh_token": tok.get("refresh_token"),
+        "token_type": tok.get("token_type", "bearer"),
+        "expires_in": tok.get("expires_in"),
+        "raw": tok,
+    }
+
+def is_signed_in() -> bool:
+    return bool(st.session_state.get("auth", {}).get("access_token"))
+
+def bearer() -> str | None:
+    tok = st.session_state.get("auth", {}).get("access_token")
+    return f"Bearer {tok}" if tok else None
+
+def sign_in(email: str, password: str) -> dict:
     """
-    Prefer st.rerun() (new), fall back to experimental if present.
-    If neither exists (very old version), do nothing.
+    Supabase password login:
+      POST {SUPABASE_URL}/auth/v1/token?grant_type=password
     """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_ANON_KEY")
+
+    url = f"{SUPABASE_URL}/auth/v1/token"
+    params = {"grant_type": "password"}           # <- must be in query string
+    headers = {"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"}
+    body = {"email": email, "password": password}
+
+    r = requests.post(url, params=params, headers=headers, json=body, timeout=20)
+    if r.status_code != 200:
+        try:
+            err = r.json()
+        except Exception:
+            err = {"message": r.text}
+        raise RuntimeError(f"Login failed ({r.status_code}): {err}")
+
+    data = r.json()
+    _save_token(data)
+    return data
+
+def sign_out():
+    st.session_state.pop("auth", None)
+
+# -----------------------------------------------------------------------------
+# API helpers
+# -----------------------------------------------------------------------------
+def _attach_auth(headers: dict | None = None) -> dict:
+    headers = headers.copy() if headers else {}
+    tok = bearer()
+    if tok:
+        headers["Authorization"] = tok
+    return headers
+
+def api_get(path: str, **kwargs) -> requests.Response:
+    url = f"{API_URL}{path}"
+    headers = _attach_auth(kwargs.pop("headers", None))
+    return requests.get(url, headers=headers, timeout=30, **kwargs)
+
+def api_post(path: str, **kwargs) -> requests.Response:
+    url = f"{API_URL}{path}"
+    headers = _attach_auth(kwargs.pop("headers", None))
+    return requests.post(url, headers=headers, timeout=120, **kwargs)
+
+def api_delete(path: str, **kwargs) -> requests.Response:
+    url = f"{API_URL}{path}"
+    headers = _attach_auth(kwargs.pop("headers", None))
+    return requests.delete(url, headers=headers, timeout=30, **kwargs)
+
+def get_json_relaxed(path_candidates: list[str], **kwargs):
+    """
+    Try several paths (first that succeeds), return parsed JSON or (status, text) on error.
+    """
+    last = None
+    for p in path_candidates:
+        r = api_get(p, **kwargs)
+        last = r
+        if r.status_code == 200:
+            try:
+                return r.json()
+            except Exception:
+                return {"error": "Non-JSON response from API", "body": r.text}
+    # no success
     try:
-        if hasattr(st, "rerun"):
-            st.rerun()
-        elif hasattr(st, "experimental_rerun"):
-            st.experimental_rerun()  # type: ignore[attr-defined]
+        body = last.json()
     except Exception:
-        # Don't crash the app if rerun isn't available
-        pass
+        body = last.text
+    return {"status": last.status_code, "error": body}
 
-# ------------------------------
-# Session State
-# ------------------------------
-def _init_state():
-    ss = st.session_state
-    ss.setdefault("api_url", DEFAULT_API_URL)
-    ss.setdefault("jwt", "")
-    ss.setdefault("user_email", "")
-    ss.setdefault("last_file_fp", None)
-    ss.setdefault("folders", [])
-    ss.setdefault("folder_id", None)
-    ss.setdefault("debug_mode", False)
-    ss.setdefault("history", [])
-    ss.setdefault("supports_folders", None)
-    ss.setdefault("supports_list_docs", None)
-_init_state()
 
-# ------------------------------
-# HTTP client
-# ------------------------------
-@st.cache_resource
-def get_client() -> requests.Session:
-    s = requests.Session()
-    s.headers.update({"Accept": "application/json"})
-    s.timeout = 120
-    return s
+def _rerun_app():
+    rerun_fn = getattr(st, 'rerun', None) or getattr(st, 'experimental_rerun', None)
+    if rerun_fn:
+        rerun_fn()
 
-def _headers() -> Dict[str, str]:
-    h = {}
-    if st.session_state.jwt:
-        h["Authorization"] = f"Bearer {st.session_state.jwt.strip()}"
-    return h
 
-def api_get(path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict], Optional[str]]:
-    try:
-        r = get_client().get(st.session_state.api_url.rstrip("/") + path, params=params, headers=_headers(), timeout=120)
-        if r.status_code == 404: return None, "404"
-        r.raise_for_status()
-        return (r.json() if r.content and "application/json" in r.headers.get("content-type","") else {}), None
-    except Exception as e:
-        return None, str(e)
+# -----------------------------------------------------------------------------
+# UI building blocks
+# -----------------------------------------------------------------------------
+def render_auth_sidebar():
+    st.sidebar.markdown("## Account")
+    mode = st.sidebar.radio("Auth mode", ["Sign in", "Sign up"], horizontal=True, index=0, key="auth_mode")
 
-def api_post_json(path: str, body: Dict[str, Any]) -> Tuple[Optional[Dict], Optional[str]]:
-    try:
-        r = get_client().post(st.session_state.api_url.rstrip("/") + path, json=body, headers=_headers(), timeout=120)
-        if r.status_code == 404: return None, "404"
-        r.raise_for_status()
-        return (r.json() if r.content else {}), None
-    except Exception as e:
-        return None, str(e)
+    email = st.sidebar.text_input("Email", value=st.session_state.get("last_email", ""), key="email")
+    password = st.sidebar.text_input("Password", type="password", key="password")
 
-def api_post_file(path: str, files: Dict[str, Any], data: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict], Optional[str]]:
-    try:
-        r = get_client().post(st.session_state.api_url.rstrip("/") + path, files=files, data=data or {}, headers=_headers(), timeout=300)
-        if r.status_code == 404: return None, "404"
-        r.raise_for_status()
-        return (r.json() if r.content else {}), None
-    except Exception as e:
-        return None, str(e)
+    c1, c2 = st.sidebar.columns(2)
+    with c1:
+        if st.button("Sign in", use_container_width=True):
+            try:
+                sign_in(email, password)
+                st.session_state["last_email"] = email
+                st.sidebar.success("Signed in.")
+            except Exception as e:
+                st.sidebar.error(str(e))
+    with c2:
+        if st.button("Sign out", use_container_width=True):
+            sign_out()
+            st.sidebar.info("Signed out.")
 
-def api_delete(path: str) -> Optional[str]:
-    try:
-        r = get_client().delete(st.session_state.api_url.rstrip("/") + path, headers=_headers(), timeout=120)
-        if r.status_code == 404: return "404"
-        r.raise_for_status()
-        return None
-    except Exception as e:
-        return str(e)
-
-# ------------------------------
-# Utilities
-# ------------------------------
-def file_fingerprint(upload: "UploadedFile") -> str:
-    b = upload.getvalue()
-    sha1 = hashlib.sha1(b).hexdigest()
-    return f"{upload.name}:{len(b)}:{sha1}"
-
-def show_contexts(contexts: List[Any]):
-    if not contexts:
-        st.info("No contexts returned.")
-        return
-    for i, c in enumerate(contexts, 1):
-        with st.expander(f"Context {i}"):
-            if isinstance(c, dict): st.json(c)
-            else: st.write(c)
-
-def detect_features():
-    if st.session_state.supports_folders is None:
-        _, err = api_get("/v1/folders")
-        st.session_state.supports_folders = (err is None)
-    if st.session_state.supports_list_docs is None:
-        _, err2 = api_get("/v1/documents")
-        st.session_state.supports_list_docs = (err2 is None)
-
-def refresh_folders():
-    if not st.session_state.supports_folders:
-        st.session_state.folders = []; st.session_state.folder_id = None; return
-    data, err = api_get("/v1/folders")
-    if err is None and isinstance(data, dict):
-        st.session_state.folders = data.get("folders", data.get("data", [])) or []
-        ids = {f.get("id") for f in st.session_state.folders}
-        if st.session_state.folder_id not in ids: st.session_state.folder_id = None
+    if is_signed_in():
+        st.sidebar.success("You are signed in and the access token is loaded.")
     else:
-        st.session_state.folders = []; st.session_state.folder_id = None
+        st.sidebar.warning("Signed out. No access token loaded.")
 
-# ------------------------------
-# Sidebar — Settings & Upload
-# ------------------------------
-with st.sidebar:
-    st.title("⚙️ Settings")
-    st.text_input("API URL", key="api_url")
-    st.text_input("User email (optional)", key="user_email")
-    st.text_input("JWT (optional)", key="jwt", type="password")
+    st.sidebar.caption(f"API={API_URL} • Supabase={SUPABASE_URL or '—'}")
 
-    st.divider(); st.caption("Feature detection")
-    if st.button("Probe API features", use_container_width=True):
-        detect_features(); refresh_folders(); st.success("Probed API."); safe_rerun()
-    if st.session_state.supports_folders is None or st.session_state.supports_list_docs is None:
-        detect_features()
-        if st.session_state.supports_folders: refresh_folders()
+def render_header():
+    st.title("Notes Copilot — Login + Persistent Library")
 
-    st.divider(); st.header("📁 Add a document")
-    if st.session_state.supports_folders:
-        cols = st.columns([3,1])
-        with cols[0]:
-            opts = ["(No folder)"] + [f.get("name", f.get("id","folder")) for f in st.session_state.folders]
-            chosen = st.selectbox("Folder", options=opts, index=0)
-            if chosen == "(No folder)": st.session_state.folder_id = None
+def render_upload():
+    st.markdown("### Upload")
+    file = st.file_uploader("Drag and drop file here", type=["pdf", "md", "txt"], accept_multiple_files=False)
+    if not file:
+        return
+
+    st.write(f"**Selected:** {file.name} — {file.size/1024:.1f}KB")
+    if st.button("Ingest", disabled=not is_signed_in()):
+        try:
+            files = {"file": (file.name, file.getbuffer(), file.type or "application/octet-stream")}
+            r = api_post("/upload", files=files)
+            if r.status_code == 200:
+                st.success(json.dumps(r.json(), indent=2))
+                st.session_state.pop(DOCS_CACHE_KEY, None)
+                _rerun_app()
+            elif r.status_code == 409:
+                st.warning("That document is already uploaded.")
             else:
-                idx = opts.index(chosen) - 1
-                if 0 <= idx < len(st.session_state.folders):
-                    st.session_state.folder_id = st.session_state.folders[idx].get("id")
-        with cols[1]:
-            if st.button("↻", help="Refresh folders"): refresh_folders(); safe_rerun()
-        with st.popover("➕ New folder"):
-            with st.form("new_folder_form", clear_on_submit=True):
-                new_name = st.text_input("Folder name")
-                if st.form_submit_button("Create") and new_name.strip():
-                    data, err = api_post_json("/v1/folders", {"name": new_name.strip()})
-                    if err: st.error(f"Create failed: {err}")
-                    else: st.success("Folder created."); refresh_folders(); time.sleep(0.2); safe_rerun()
+                try:
+                    st.error(json.dumps(r.json(), indent=2))
+                except Exception:
+                    st.error(f"{r.status_code} {r.text}")
+        except Exception as e:
+            st.error(str(e))
 
-    with st.form("upload_form", clear_on_submit=False):
-        up = st.file_uploader("Upload PDF", type=["pdf"], key="uploader")
-        submit_up = st.form_submit_button("Add to index")
-    if submit_up and up:
-        fp = file_fingerprint(up)
-        if fp == st.session_state.last_file_fp:
-            st.info("That exact file is already indexed in this session.")
-        else:
-            with st.spinner("Indexing document…"):
-                files = {"file": (up.name, up.getvalue(), "application/pdf")}
-                data = {}
-                if st.session_state.supports_folders and st.session_state.folder_id:
-                    data["folder_id"] = st.session_state.folder_id
-                resp, err = api_post_file("/v1/documents", files=files, data=data)
-                if err == "404": resp, err = api_post_file("/v1/upload", files=files, data=data)
-                if err: st.error(f"Upload failed: {err}")
+def _fetch_documents() -> list[dict]:
+    data = get_json_relaxed(["/docs"])
+    if isinstance(data, dict) and data.get("status") not in (None, 200):
+        raise RuntimeError(data)
+    if isinstance(data, dict):
+        return [data]
+    return data or []
+
+
+def render_documents():
+    st.markdown("### Your documents")
+
+    if not is_signed_in():
+        st.info("Sign in to view your uploaded files.")
+        st.session_state.pop(DOCS_CACHE_KEY, None)
+        return
+
+    docs_cache = st.session_state.get(DOCS_CACHE_KEY)
+    warn_default = st.session_state.get(DOCS_WARN_KEY, True)
+
+    warn_choice = st.checkbox(
+        "Warn before removing",
+        value=warn_default,
+        key="chk_docs_warn",
+        help="Ask for confirmation before deleting a document",
+    )
+    st.session_state[DOCS_WARN_KEY] = warn_choice
+
+    if docs_cache is None:
+        try:
+            docs_cache = _fetch_documents()
+            st.session_state[DOCS_CACHE_KEY] = docs_cache
+        except Exception as exc:
+            st.error(f"Fetch failed: {exc}")
+            return
+
+    docs = docs_cache or []
+    if not docs:
+        st.info("No documents yet. Upload something!")
+        return
+
+    def _delete_doc(doc_id: int) -> bool:
+        try:
+            resp = api_delete(f"/docs/{doc_id}")
+        except Exception as exc:
+            st.error(str(exc))
+            return False
+        if resp.status_code == 404:
+            st.session_state[DOCS_CACHE_KEY] = [
+                d for d in st.session_state.get(DOCS_CACHE_KEY, []) if d.get("doc_id") != doc_id
+            ]
+            return True
+        if resp.status_code not in (200, 204):
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text
+            st.error(f"Delete failed ({resp.status_code}): {detail}")
+            return False
+        st.session_state[DOCS_CACHE_KEY] = [
+            d for d in st.session_state.get(DOCS_CACHE_KEY, []) if d.get("doc_id") != doc_id
+        ]
+        return True
+
+    for item in docs:
+        doc_id = item.get("doc_id")
+        if doc_id is None:
+            continue
+        title = item.get("filename") or "untitled"
+        size = item.get("byte_size")
+        created = item.get("created_at") or "(time unavailable)"
+        pending_key = f"pending_delete_{doc_id}"
+
+        info_col, action_col = st.columns([12, 1])
+        with info_col:
+            st.markdown(f"**{title}**  \
+Size: {size or 'unknown'} bytes  \
+Uploaded: {created}")
+        with action_col:
+            if st.button("X", key=f"btn_del_{doc_id}", help="Remove this document", use_container_width=True):
+                if warn_choice:
+                    st.session_state[pending_key] = True
                 else:
-                    st.session_state.last_file_fp = fp
-                    st.success("Document added to index.")
-                    # refresh the doc list pane if available
-                    try: api_get("/v1/documents")
-                    except Exception: pass
-                    safe_rerun()
+                    if _delete_doc(int(doc_id)):
+                        _rerun_app()
 
-    st.divider(); st.header("🧹 Maintenance")
-    if st.button("Clear ALL documents (THIS USER)", use_container_width=True):
-        err = api_delete("/v1/documents")
-        if err == "404": st.warning("DELETE /v1/documents not available.")
-        elif err: st.error(f"Clear failed: {err}")
-        else: st.success("Cleared."); st.session_state.last_file_fp = None; safe_rerun()
+        if warn_choice and st.session_state.get(pending_key):
+            st.warning(f"Remove {title}? This action cannot be undone.")
+            confirm_col, cancel_col = st.columns([1, 1])
+            with confirm_col:
+                if st.button("Delete", key=f"btn_confirm_del_{doc_id}", use_container_width=True):
+                    if _delete_doc(int(doc_id)):
+                        st.session_state.pop(pending_key, None)
+                        _rerun_app()
+            with cancel_col:
+                if st.button("Keep", key=f"btn_cancel_del_{doc_id}", use_container_width=True):
+                    st.session_state.pop(pending_key, None)
+                    _rerun_app()
 
-    st.toggle("Debug mode (show contexts)", key="debug_mode")
 
-# ------------------------------
-# Main — Search & Results
-# ------------------------------
-st.title("🗂️ Notes Copilot")
+def render_ask():
+    st.markdown("### Ask about your notes here")
+    q = st.text_input("Question", key="ask_q").strip()
+    k = st.slider("Snippets to use", min_value=1, max_value=8, value=5, key="ask_k")
 
-if st.session_state.supports_list_docs:
-    with st.expander("📄 Documents (from API)"):
-        docs, err = api_get("/v1/documents")
-        if err: st.info("Could not list documents.")
-        else:
-            if isinstance(docs, dict) and docs.get("documents"):
-                for d in docs["documents"]:
-                    st.markdown(f"- **{d.get('filename','?')}** · id=`{d.get('id','?')}` · folder=`{d.get('folder_id','')}`")
-            else: st.info("No documents reported.")
+    # Optional knobs to control enrichment/tone (if your backend supports them)
+    col1, col2 = st.columns(2)
+    with col1:
+        enrich = st.checkbox("Allow outside info (web/Gemini)", value=True, key="ask_enrich")
+    with col2:
+        warm = st.checkbox("Warm & welcoming tone", value=True, key="ask_warm")
 
-st.subheader("Ask a question about your notes")
-q_cols = st.columns([6,2,1])
-with q_cols[0]:
-    query = st.text_input("Question", placeholder="e.g., Where does Namit go to school?")
-with q_cols[1]:
-    enrich = st.toggle("Add outside context", value=True)
-with q_cols[2]:
-    go = st.button("Search", type="primary", use_container_width=True)
+    if st.button("Ask", disabled=not is_signed_in()):
+        payload = {"q": q, "k": k, "enrich": enrich, "warm": warm}
+        try:
+            r = api_post("/ask", json=payload)
+            if r.status_code != 200:
+                try:
+                    st.error(f"Ask failed ({r.status_code}): {r.json()}")
+                except Exception:
+                    st.error(f"Ask failed ({r.status_code}): {r.text}")
+                return
+            data = r.json()
+            answer = data.get("answer") or data  # fallback if backend returns plain text/json
+            st.markdown("**Answer**")
+            if isinstance(answer, str):
+                st.write(answer)
+            else:
+                st.write(json.dumps(answer, indent=2))
 
-if go and query.strip():
-    body = {"query": query.strip(), "enrich": bool(enrich)}
-    if st.session_state.debug_mode: body["debug"] = True
-    with st.spinner("Thinking…"):
-        res, err = api_post_json("/v1/search", body)
-        if err: st.error(f"Search failed: {err}")
-        else:
-            answer = None; contexts = None
-            if isinstance(res, dict):
-                answer = res.get("answer") or res.get("data", {}).get("answer") or res.get("message")
-                if st.session_state.debug_mode:
-                    contexts = res.get("contexts") or res.get("data", {}).get("contexts")
-            st.markdown("### ✅ Answer"); st.write(answer or "No answer returned.")
-            if st.session_state.debug_mode:
-                st.markdown("### 🔎 Retrieved contexts"); show_contexts(contexts if isinstance(contexts, list) else [])
-            st.session_state.history.insert(0, (query.strip(), answer, contexts if st.session_state.debug_mode else None))
+            cites = data.get("citations") or data.get("snippets")
+            if cites:
+                with st.expander("Snippets used"):
+                    for i, c in enumerate(cites, 1):
+                        st.markdown(f"**{i}. {c.get('filename','file')} — p.{c.get('page','?')}**")
+                        t = (c.get("text") or "").strip()
+                        st.write(t if len(t) < 1000 else t[:1000] + "…")
+        except Exception as e:
+            st.error(str(e))
 
-if st.session_state.history:
-    st.divider(); st.subheader("Recent questions")
-    for i, (hq, ha, hc) in enumerate(st.session_state.history[:10], 1):
-        with st.expander(f"{i}. {hq}"):
-            st.write(ha)
-            if st.session_state.debug_mode and hc:
-                st.caption("Contexts snapshot:"); show_contexts(hc)
+# -----------------------------------------------------------------------------
+# Page layout
+# -----------------------------------------------------------------------------
+def main():
+    st.set_page_config(page_title="Notes Copilot", page_icon="🗂️", layout="wide")
+    render_auth_sidebar()
+    render_header()
 
-st.markdown("<hr/><small>Tip: turn on <b>Debug mode</b> to see the exact chunks retrieved.</small>", unsafe_allow_html=True)
+    # Quick status row
+    st.caption(f"Signed in as **{st.session_state.get('last_email','(not signed in)')}** · "
+               f"API={API_URL} · Supabase={SUPABASE_URL or '—'}")
+
+    st.divider()
+    render_upload()
+    st.divider()
+    render_documents()
+    st.divider()
+    render_ask()
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+

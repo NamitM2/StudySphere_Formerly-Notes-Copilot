@@ -1,12 +1,23 @@
-# core/generation.py
-from __future__ import annotations
-from typing import List
-import os
-import json
+# core/generation.py - DEPRECATED
+# This file has been consolidated into core/qa_gemini.py
+# The enhanced qa_gemini.py now includes:
+# - JSON schema validation
+# - Fallback mechanisms
+# - Better error handling
+# - Academic-focused prompting
+#
+# Please use core.qa_gemini.ask_with_schema() instead of functions from this file.
+#
+# TODO: Remove this file once all imports have been updated.
+
+# from __future__ import annotations
+# from typing import Any, Dict, List, Tuple
+# import os
+# import json
 
 # === Configuration ===
-API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.0-flash").strip()
+# API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+# GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.0-flash").strip()
 
 SYSTEM_RULES = """You are a careful assistant for a notes Q&A app.
 
@@ -121,3 +132,26 @@ def generate_json_answer(question: str, contexts: List[str], allow_enrichment: b
     except Exception:
         # If the model name is wrong/retired or network fails, don't crash—fallback.
         return _fallback_from_notes_only(question, contexts)
+
+
+
+def ask(
+    question: str,
+    snippets: List[Dict[str, Any]],
+    *,
+    allow_outside: bool = True,
+    warm_tone: bool = True,
+) -> Tuple[str, Dict[str, Any]]:
+    """Compatibility wrapper used when Gemini SDK is unavailable."""
+    contexts: List[str] = []
+    for sn in snippets or []:
+        if isinstance(sn, dict):
+            contexts.append((sn.get("text") or ""))
+        else:
+            contexts.append(str(sn) if sn is not None else "")
+    answer = generate_json_answer(
+        question,
+        contexts,
+        allow_enrichment=allow_outside,
+    )
+    return answer, {"citations": snippets or []}

@@ -45,3 +45,6 @@ tmp/
 *.sqlite
 *.sqlite3
 *.faiss
+
+.streamlit/secrets.toml
+ui/.streamlit/secrets.toml
