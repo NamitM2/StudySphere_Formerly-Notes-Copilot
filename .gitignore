@@ -48,3 +48,35 @@ tmp/
 
 .streamlit/secrets.toml
 ui/.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+*.pyo
+*.pyd
+.Python
+.python-version
+
+# Virtual environments
+venv/
+.venv/
+.venv3*/
+env/
+ENV/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Streamlit cache
+.streamlit/cache/
+.streamlit/config.toml
+
+# Node (for the new frontend later)
+node_modules/
+dist/
+build/
