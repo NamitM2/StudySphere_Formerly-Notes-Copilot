@@ -11,5 +11,5 @@ python-jose[cryptography]
 google-generativeai
 supabase
 postgrest
-
+pymupdf
 
