@@ -129,31 +129,20 @@ def embed_texts(texts: List[str]) -> np.ndarray:
         genai = _ensure_gemini()
         vecs: List[List[float]] = []
 
-        # Use the *batch* endpoint correctly. embed_content with a list returns ONE vector.
-        BATCH = 100
+        # Process texts individually (google-generativeai doesn't support batch embedding)
+        BATCH = 20
         num_batches = (len(texts) + BATCH - 1) // BATCH
         for batch_idx, i in enumerate(range(0, len(texts), BATCH), 1):
             batch = texts[i:i + BATCH]
             print(f"[EMBED] Processing batch {batch_idx}/{num_batches} ({len(batch)} texts)...")
 
-            try:
-                # New-style batch API
-                # requests is a list of dicts with "content" and optional "task_type"
-                res = genai.batch_embed_contents(
+            for t in batch:
+                r = genai.embed_content(
                     model=EMBED_MODEL,
-                    requests=[{"content": t, "task_type": "retrieval_document"} for t in batch],
+                    content=t,
+                    task_type="retrieval_document",
                 )
-                vecs.extend(_extract_vectors_gemini_response(res))
-            except Exception as e:
-                print(f"[EMBED] Batch API failed ({e}), falling back to single requests...")
-                # Fallback to per-item singles
-                for t in batch:
-                    r = genai.embed_content(
-                        model=EMBED_MODEL,
-                        content=t,
-                        task_type="retrieval_document",
-                    )
-                    vecs.extend(_extract_vectors_gemini_response(r))
+                vecs.extend(_extract_vectors_gemini_response(r))
 
         arr = np.asarray(vecs, dtype="float32")
 
