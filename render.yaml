@@ -11,7 +11,7 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE
         sync: false
-      - key: JWT_SECRET
+      - key: SUPABASE_JWT_SECRET
         sync: false
       - key: GEMINI_API_KEY
         sync: false
