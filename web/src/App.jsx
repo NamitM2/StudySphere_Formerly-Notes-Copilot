@@ -1,6 +1,6 @@
 // web/src/App.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader } from "./lib/auth";
+import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader, handleEmailVerification } from "./lib/auth";
 import { postFile, postJSON, getJSON } from "./lib/api";
 
 // Only needed for DELETE helper
@@ -81,6 +81,20 @@ export default function App() {
   useEffect(() => {
     refreshDocs();
   }, [token]);
+
+  // Handle email verification on mount
+  useEffect(() => {
+    (async () => {
+      const result = await handleEmailVerification();
+      if (result?.success) {
+        setToken(loadToken());
+        setUserEmail(loadUserEmail());
+        showToast("Account confirmed! You're now signed in.", "success");
+      } else if (result?.error) {
+        showToast(`Email verification failed: ${result.error}`, "error");
+      }
+    })();
+  }, []);
 
   // Clear drag highlight if drag ends outside the drop zone/window
   useEffect(() => {

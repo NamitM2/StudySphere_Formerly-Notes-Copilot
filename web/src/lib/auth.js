@@ -48,15 +48,37 @@ export async function signUp(email, password) {
     throw new Error("Missing Supabase env vars.");
   }
   const url = `${SUPABASE_URL}/auth/v1/signup`;
+
+  // Get the current site URL for email redirect
+  // Default to production URL if in production, otherwise use current origin for local dev
+  const redirectTo = window.location.hostname === 'localhost'
+    ? window.location.origin
+    : 'https://notes-copilot.vercel.app';
+
   const r = await fetch(url, {
     method: "POST",
     headers: {
       apikey: SUPABASE_ANON_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      email,
+      password,
+      options: {
+        emailRedirectTo: redirectTo
+      }
+    }),
   });
-  if (!r.ok) throw new Error(await r.text());
+
+  if (!r.ok) {
+    const errorText = await r.text();
+    // Check if the error is about duplicate email
+    if (errorText.includes("already registered") || errorText.includes("already exists") || errorText.includes("User already registered")) {
+      throw new Error("Email already exists");
+    }
+    throw new Error(errorText);
+  }
+
   const data = await r.json();
   if (data?.access_token) saveTokenData(data); // some projects auto-sign in
   return data;
@@ -83,4 +105,56 @@ export async function signOut() {
   } finally {
     signOutLocal();
   }
+}
+
+// Handle email verification callback
+export async function handleEmailVerification() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return null;
+  }
+
+  // Check for tokens in URL hash (e.g., #access_token=...)
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const accessToken = hashParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token');
+
+  // Also check query params (e.g., ?access_token=...)
+  const queryParams = new URLSearchParams(window.location.search);
+  const queryAccessToken = queryParams.get('access_token');
+  const queryRefreshToken = queryParams.get('refresh_token');
+
+  const token = accessToken || queryAccessToken;
+  const refresh = refreshToken || queryRefreshToken;
+
+  if (token) {
+    // Exchange the token for user data
+    try {
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (r.ok) {
+        const user = await r.json();
+        const tokenData = {
+          access_token: token,
+          refresh_token: refresh,
+          user: user,
+        };
+        saveTokenData(tokenData);
+
+        // Clean up the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        return { success: true, user };
+      }
+    } catch (e) {
+      console.error("Email verification error:", e);
+      return { success: false, error: e.message };
+    }
+  }
+
+  return null;
 }
