@@ -1,5 +1,9 @@
 // web/src/lib/api.js
-const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+const API_BASE = (
+  window.__API_BASE ||
+  import.meta.env.VITE_API_URL ||
+  "https://notes-copilot.onrender.com/api"
+).replace(/\/$/, "");
 console.log("[NC] VITE_API_URL =", import.meta.env.VITE_API_URL);
 console.log("[NC] API BASE     =", API_BASE);
 

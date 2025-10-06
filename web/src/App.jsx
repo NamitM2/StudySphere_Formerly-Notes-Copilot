@@ -4,7 +4,11 @@ import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader } from
 import { postFile, postJSON, getJSON } from "./lib/api";
 
 // Only needed for DELETE helper
-const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+const API_BASE = (
+  window.__API_BASE ||
+  import.meta.env.VITE_API_URL ||
+  "https://notes-copilot.onrender.com/api"
+).replace(/\/$/, "");
 console.log("[NC] VITE_API_URL =", import.meta.env.VITE_API_URL);
 console.log("[NC] API_BASE     =", API_BASE);
 
