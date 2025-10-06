@@ -97,6 +97,27 @@ def _mmr_select(query_vec: np.ndarray, doc_vecs: np.ndarray, limit: int, lambda_
         remaining.remove(best_idx)               # type: ignore[arg-type]
     return selected
 
+def _should_show_citations(answer: str, min_distance: float) -> bool:
+    """
+    Determine if citations should be shown based on answer content and document relevance.
+
+    Returns True if answer is from notes, False if from model knowledge.
+    """
+    answer_lower = answer.lower() if isinstance(answer, str) else ""
+
+    # Check if answer explicitly says it's not in notes
+    has_not_found_phrase = (
+        ("couldn't find" in answer_lower or "could not find" in answer_lower or
+         "can't find" in answer_lower or "cannot find" in answer_lower)
+        and "notes" in answer_lower
+    )
+
+    # Check if retrieved documents are actually relevant (distance < 0.3 = high similarity)
+    has_relevant_docs = min_distance < 0.3
+
+    # Show citations only if answer is from notes
+    return (not has_not_found_phrase) and has_relevant_docs
+
 # ----------------------------------------------------------------------
 # Core modules (import defensively)
 # ----------------------------------------------------------------------
@@ -323,7 +344,12 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
 
     snippets: List[Dict[str, Any]] = []
     texts: List[str] = []
+    min_distance = float('inf')  # Track minimum distance for citation detection
+
     for h in hits or []:
+        distance = h.get("distance")
+        if distance is not None and distance < min_distance:
+            min_distance = distance
         sn = {
             "filename": h.get("filename") or h.get("file_name") or "file",
             "page": h.get("page"),
@@ -371,7 +397,13 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
             warm_tone=warm,
         )
         out_answer = answer.get("answer") if isinstance(answer, dict) else answer
-        citations = (meta or {}).get("citations") or snippets
+
+        # Determine if citations should be shown based on answer content and relevance
+        effective_min_distance = min_distance if min_distance != float('inf') else 1.0
+        show_citations = _should_show_citations(out_answer, effective_min_distance)
+
+        # Only return citations if answer is from notes
+        citations = ((meta or {}).get("citations") or snippets) if show_citations else []
         return {"answer": out_answer, "citations": citations}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini call failed: {e}")

@@ -126,9 +126,9 @@ def main() -> None:
     try:
         from dotenv import load_dotenv
         load_dotenv(root / ".env")
-        print("✓ Loaded .env")
+        print("[OK] Loaded .env")
     except Exception as e:
-        print(f"⚠ Could not load .env: {e}")
+        print(f"[WARN] Could not load .env: {e}")
 
     # Decide backend import path
     backend_import = args.backend if args.backend != "auto" else detect_backend_import(root)
