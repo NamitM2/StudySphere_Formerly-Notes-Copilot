@@ -6,7 +6,9 @@ from typing import List, Any, Iterable
 import numpy as np
 
 PROVIDER = os.getenv("EMBED_PROVIDER", "gemini").lower()          # "gemini" | "local"
-EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-004")
+_EMBED_MODEL_RAW = os.getenv("EMBED_MODEL", "text-embedding-004")
+# Ensure model name has proper prefix for Gemini API
+EMBED_MODEL = _EMBED_MODEL_RAW if _EMBED_MODEL_RAW.startswith(("models/", "tunedModels/")) else f"models/{_EMBED_MODEL_RAW}"
 EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
 
 _sbert = None
@@ -129,8 +131,10 @@ def embed_texts(texts: List[str]) -> np.ndarray:
 
         # Use the *batch* endpoint correctly. embed_content with a list returns ONE vector.
         BATCH = 100
-        for i in range(0, len(texts), BATCH):
+        num_batches = (len(texts) + BATCH - 1) // BATCH
+        for batch_idx, i in enumerate(range(0, len(texts), BATCH), 1):
             batch = texts[i:i + BATCH]
+            print(f"[EMBED] Processing batch {batch_idx}/{num_batches} ({len(batch)} texts)...")
 
             try:
                 # New-style batch API
@@ -140,7 +144,8 @@ def embed_texts(texts: List[str]) -> np.ndarray:
                     requests=[{"content": t, "task_type": "retrieval_document"} for t in batch],
                 )
                 vecs.extend(_extract_vectors_gemini_response(res))
-            except Exception:
+            except Exception as e:
+                print(f"[EMBED] Batch API failed ({e}), falling back to single requests...")
                 # Fallback to per-item singles
                 for t in batch:
                     r = genai.embed_content(

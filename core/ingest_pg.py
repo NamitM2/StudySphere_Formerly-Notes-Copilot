@@ -28,6 +28,7 @@ def _sanitize_text(s: str) -> str:
     """
     Remove NULs and control characters that Postgres TEXT cannot store.
     Keep newlines and tabs, collapse excessive whitespace.
+    Also handles Unicode characters safely for console output.
     """
     if not s:
         return ""
@@ -42,6 +43,19 @@ def _sanitize_text(s: str) -> str:
     lines = [ln.strip() for ln in s.splitlines()]
     s = "\n".join(ln for ln in lines if ln)
     return s.strip()
+
+
+def _safe_print(msg: str) -> None:
+    """
+    Print with fallback encoding for Windows console.
+    Prevents crashes from Unicode characters that can't be displayed.
+    """
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        # Fallback: encode to ASCII with replacement for problematic chars
+        safe_msg = msg.encode('ascii', errors='replace').decode('ascii')
+        print(safe_msg)
 
 
 def _collect_chunks(pairs: List[Tuple[int, str]]) -> List[Tuple[int, str]]:
@@ -60,19 +74,37 @@ def _collect_chunks(pairs: List[Tuple[int, str]]) -> List[Tuple[int, str]]:
 
 
 def _pdf_chunks(file_bytes: bytes, chunk_chars: int = 360, overlap: int = 90) -> List[Tuple[int, str]]:
-    reader = PdfReader(io.BytesIO(file_bytes))
+    try:
+        reader = PdfReader(io.BytesIO(file_bytes))
+        _safe_print(f"[PDF] Opened PDF with {len(reader.pages)} pages")
+    except Exception as e:
+        _safe_print(f"[PDF] ERROR: Failed to read PDF: {e}")
+        raise
+
     pieces: List[Tuple[int, str]] = []
+    empty_pages = 0
 
     for i, page in enumerate(reader.pages):
         raw = page.extract_text() or ""
         raw = _sanitize_text(raw)
         if not raw:
+            empty_pages += 1
             continue
+        _safe_print(f"[PDF] Page {i+1}: Extracted {len(raw)} chars")
         for seg in split_text(raw, max_chars=chunk_chars, overlap=overlap):
             seg = _sanitize_text(seg)
             if seg:
                 pieces.append((i + 1, seg))  # 1-based page
-    return _collect_chunks(pieces)
+
+    if empty_pages == len(reader.pages):
+        _safe_print(f"[PDF] WARNING: No text extracted from any page. This PDF may be scanned/image-based.")
+        _safe_print(f"[PDF] Scanned PDFs require OCR (Optical Character Recognition) which is not currently enabled.")
+    elif empty_pages > 0:
+        _safe_print(f"[PDF] Note: {empty_pages}/{len(reader.pages)} pages had no extractable text")
+
+    result = _collect_chunks(pieces)
+    _safe_print(f"[PDF] Extracted {len(result)} text chunks")
+    return result
 
 
 def _plain_chunks(file_bytes: bytes, chunk_chars: int = 360, overlap: int = 90) -> List[Tuple[int, str]]:
@@ -150,30 +182,35 @@ def ingest_file(
 
         if not chunk_pairs:
             # Remove empty doc row and stored file (no useful text)
+            _safe_print(f"[INGEST] WARNING: No chunks extracted from {filename}")
             supa.table("documents").delete().eq("id", doc_id).execute()
             try:
                 delete_paths([storage_path])
             except Exception:
                 pass
-            return {
-                "doc_id": doc_id,
-                "filename": filename,
-                "bytes": len(file_bytes),
-                "pages": 0,
-                "chunks": 0,
-                "elapsed_ms": int((time.time() - t0) * 1000),
-            }
+
+            # Provide helpful error message
+            if filename.lower().endswith(".pdf"):
+                raise RuntimeError(
+                    "No text could be extracted from this PDF. "
+                    "This usually means the PDF is scanned or image-based. "
+                    "Please try a PDF with searchable text, or use a tool to convert scanned PDFs to text first."
+                )
+            else:
+                raise RuntimeError(f"No text could be extracted from {filename}")
 
         pages: List[int] = [p for p, _ in chunk_pairs]
         texts: List[str] = [t for _, t in chunk_pairs]
         n = len(texts)
 
         # ---- 4) Embed all chunks --------------------------------------------
+        _safe_print(f"[INGEST] Embedding {n} text chunks (this may take a minute for large documents)...")
         vectors = embed_texts(texts)  # np.ndarray [n, d]
         if vectors.shape[0] != n:
             raise RuntimeError(
                 f"Embedding count mismatch: have {n} chunks but embed_texts returned {vectors.shape[0]} vectors"
             )
+        _safe_print(f"[INGEST] Successfully created {vectors.shape[0]} embeddings")
 
         # ---- 5) Build rows ---------------------------------------------------
         rows = [
@@ -189,9 +226,12 @@ def ingest_file(
 
         # ---- 6) Upsert in batches -------------------------------------------
         BATCH = 200
+        _safe_print(f"[INGEST] Writing {len(rows)} chunks to database...")
         try:
             for start in range(0, len(rows), BATCH):
-                batch = rows[start:start + BATCH]
+                end = min(start + BATCH, len(rows))
+                batch = rows[start:end]
+                _safe_print(f"[INGEST]   Batch {start+1}-{end} of {len(rows)}")
                 (
                     supa.table("chunks")
                     .upsert(
@@ -205,14 +245,17 @@ def ingest_file(
             # If DB missing unique (42P10) OR other upsert issue → fallback to delete+insert
             msg = str(e)
             if "42P10" in msg or "no unique or exclusion constraint" in msg.lower():
+                _safe_print(f"[INGEST] Falling back to delete+insert...")
                 supa.table("chunks").delete().eq("doc_id", doc_id).execute()
                 for start in range(0, len(rows), BATCH):
-                    batch = rows[start:start + BATCH]
+                    end = min(start + BATCH, len(rows))
+                    batch = rows[start:end]
                     supa.table("chunks").insert(batch).execute()
             else:
                 raise
 
         ms = int((time.time() - t0) * 1000)
+        _safe_print(f"[INGEST] Successfully ingested '{filename}': {len(rows)} chunks in {ms/1000:.1f}s")
         return {
             "doc_id": doc_id,
             "filename": filename,

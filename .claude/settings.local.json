@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(tasklist)",
+      "Bash(git checkout:*)",
+      "Bash(del websrcApp.jsx.backup)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
