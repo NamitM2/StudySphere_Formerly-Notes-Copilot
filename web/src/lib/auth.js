@@ -70,16 +70,26 @@ export async function signUp(email, password) {
     }),
   });
 
+  const data = await r.json();
+
+  // Check for duplicate email error in the response
   if (!r.ok) {
-    const errorText = await r.text();
-    // Check if the error is about duplicate email
-    if (errorText.includes("already registered") || errorText.includes("already exists") || errorText.includes("User already registered")) {
+    const errorMsg = data?.msg || data?.message || data?.error_description || data?.error || JSON.stringify(data);
+    if (errorMsg.toLowerCase().includes("already") || errorMsg.toLowerCase().includes("exist")) {
       throw new Error("Email already exists");
     }
-    throw new Error(errorText);
+    throw new Error(errorMsg);
   }
 
-  const data = await r.json();
+  // Even if r.ok is true, check if there's an error in the response body
+  if (data?.error || data?.error_description) {
+    const errorMsg = data.error_description || data.error;
+    if (errorMsg.toLowerCase().includes("already") || errorMsg.toLowerCase().includes("exist")) {
+      throw new Error("Email already exists");
+    }
+    throw new Error(errorMsg);
+  }
+
   if (data?.access_token) saveTokenData(data); // some projects auto-sign in
   return data;
 }
