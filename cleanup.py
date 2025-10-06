@@ -1,4 +1,5 @@
 # cleanup.py
+# Path: cleanup.py
 import os
 
 files_to_delete = ["chunks.db", "faiss_index.bin"]

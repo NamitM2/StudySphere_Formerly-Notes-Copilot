@@ -1,3 +1,5 @@
+# core/reembed.py
+# Path: core/reembed.py
 from __future__ import annotations
 
 import io

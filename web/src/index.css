@@ -1,0 +1,39 @@
+/* Tailwind v4 entry */
+@import "tailwindcss";
+
+/* Optional: app tokens */
+@theme {
+  --ring: var(--color-violet-500);
+  --brand: var(--color-violet-600);
+  --brand-hover: var(--color-violet-500);
+}
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+
+body {
+  background-color: var(--color-neutral-950);
+  /* text color */
+  @apply text-gray-200;
+}
+
+/* simple helpers to keep current UI */
+.input {
+  @apply w-full rounded-lg bg-neutral-900 border border-white/10
+         px-4 py-2 outline-none focus:ring-2 focus:ring-violet-500;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-lg bg-violet-600
+         hover:bg-violet-500 transition px-4 py-2 font-medium;
+}
+
+.card {
+  @apply rounded-2xl bg-neutral-900/80 border border-white/10 p-5 shadow-lg;
+}
+
+/* (Optional) the v4 way to declare a “utility” class (aliased to .btn) */
+/* @utility btn {
+  @apply inline-flex items-center justify-center rounded-lg bg-violet-600
+         hover:bg-violet-500 transition px-4 py-2 font-medium;
+} */

@@ -1,4 +1,5 @@
 # core/qa_gemini.py — Minimal RAG prompt with warm fallback + no citations
+# Path: core/qa_gemini.py
 from __future__ import annotations
 
 import os
@@ -13,6 +14,13 @@ MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "768"))
 CONTEXT_CHAR_BUDGET = int(os.getenv("GEMINI_CONTEXT_CHAR_BUDGET", "12000"))  # for snippets
 DEFAULT_STUDENT_NAME = os.getenv("STUDENT_NAME", "Student")
+
+# Validate configuration
+if not API_KEY:
+    import sys
+    print("ERROR: GOOGLE_API_KEY or GEMINI_API_KEY is not set in environment variables.", file=sys.stderr)
+    print("Please check your .env file and ensure you have a valid API key from Google AI Studio.", file=sys.stderr)
+    sys.exit(1)
 
 
 # --- Small helpers -----------------------------------------------------------

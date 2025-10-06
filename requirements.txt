@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 python-dotenv
 pymupdf
+pypdf
 faiss-cpu
 sentence-transformers
 scikit-learn
@@ -11,4 +12,13 @@ pydantic
 requests
 streamlit
 google-generativeai
+supabase
+postgrest
+PyJWT
+python-multipart
+fastapi
+uvicorn[standard]
+python-jose[cryptography]
+httpx
+python-dotenv
 

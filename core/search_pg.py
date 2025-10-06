@@ -1,4 +1,5 @@
 # core/search_pg.py
+# Path: core/search_pg.py
 from __future__ import annotations
 
 from typing import Any, Dict, List

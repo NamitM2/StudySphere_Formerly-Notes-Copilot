@@ -1,3 +1,4 @@
+# .gitignore
 # Python
 __pycache__/
 *.py[cod]
@@ -80,3 +81,4 @@ Thumbs.db
 node_modules/
 dist/
 build/
+.env.local

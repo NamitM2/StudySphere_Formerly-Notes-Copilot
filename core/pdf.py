@@ -1,4 +1,5 @@
 # core/pdf.py
+# Path: core/pdf.py
 from __future__ import annotations
 from typing import List
 import fitz  # PyMuPDF
@@ -27,5 +28,3 @@ def smoke_assert_contains(texts: List[str], needle: str) -> None:
     hay = " ".join(texts).lower()
     if needle.lower() not in hay:
         raise ValueError(f"PDF text missing expected phrase: {needle!r}")
-
-

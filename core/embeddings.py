@@ -1,4 +1,5 @@
 # core/embeddings.py
+# Path: core/embeddings.py
 from __future__ import annotations
 import os
 from typing import List, Any, Iterable
@@ -24,11 +25,17 @@ def _ensure_gemini():
     global _gem
     if _gem is None:
         import google.generativeai as genai
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY is not set for Gemini embeddings")
-        genai.configure(api_key=api_key)
-        _gem = genai
+            raise RuntimeError(
+                "GOOGLE_API_KEY or GEMINI_API_KEY is not set for Gemini embeddings. "
+                "Please check your .env file and ensure you have a valid API key from Google AI Studio."
+            )
+        try:
+            genai.configure(api_key=api_key)
+            _gem = genai
+        except Exception as e:
+            raise RuntimeError(f"Failed to configure Gemini API: {e}")
     return _gem
 
 # ----------------- utils -----------------

@@ -1,4 +1,5 @@
 # core/index.py
+# Path: core/index.py
 from __future__ import annotations
 from typing import List, Sequence, Union
 import numpy as np
@@ -137,4 +138,3 @@ class VectorIndex:
             end = min(len(self.chunks), idx + 2)
             results.append(" ... ".join(self.chunks[start:end]))
         return results
-

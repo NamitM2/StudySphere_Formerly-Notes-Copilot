@@ -1,4 +1,5 @@
 # check_env.py
+# Path: check_env.py
 from dotenv import load_dotenv
 import os
 
