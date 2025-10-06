@@ -21,6 +21,23 @@ async function parseJsonResponse(resp, url) {
 
   if (!resp.ok) {
     console.error("[NC] Error body:", text.slice(0, 400));
+
+    // Check for token expiry (401 with specific message)
+    if (resp.status === 401) {
+      try {
+        const errorData = JSON.parse(text);
+        if (errorData.detail && errorData.detail.includes("legacy token")) {
+          throw new Error("Login expired, please log in again");
+        }
+      } catch (e) {
+        // If JSON parsing fails or no specific message, still show friendly message for 401
+        if (e.message === "Login expired, please log in again") {
+          throw e;
+        }
+        throw new Error("Login expired, please log in again");
+      }
+    }
+
     throw new Error(`HTTP ${resp.status} ${resp.statusText} from ${url}\n${text.slice(0, 400)}`);
   }
   if (!ct.includes("application/json")) {
