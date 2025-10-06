@@ -173,7 +173,7 @@ NOW ANSWER THE QUESTION.
         # Safety blocks
         if hasattr(resp, "prompt_feedback") and getattr(resp.prompt_feedback, "block_reason", None):
             reason = str(resp.prompt_feedback.block_reason)
-            return (f"Sorry — I can’t answer that ({reason}).", {})
+            return (f"Sorry — I can't answer that ({reason}).", {})
 
         text = _strip(getattr(resp, "text", "") or "")
         if not text:
@@ -185,9 +185,13 @@ NOW ANSWER THE QUESTION.
         text = re.sub(r"(?i)\s*^sources:.*$", "", text, flags=re.MULTILINE).strip()
 
         return (text, {})
-    except Exception:
-        # Network/model exceptions → safe fallback
-        return (_fallback_empty(), {})
+    except Exception as e:
+        # Network/model exceptions → log and raise for debugging
+        import sys
+        print(f"ERROR: Gemini API call failed: {e}", file=sys.stderr)
+        print(f"ERROR: API_KEY present: {bool(API_KEY)}", file=sys.stderr)
+        print(f"ERROR: MODEL: {MODEL}", file=sys.stderr)
+        raise  # Re-raise so we can see the actual error
 
 
 # --- Minimal fallbacks -------------------------------------------------------
