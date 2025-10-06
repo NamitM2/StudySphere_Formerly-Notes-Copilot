@@ -5,9 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Notes Copilot</title>
+
+    <!-- Force API base at runtime (overrides missing/misnamed Vercel envs) -->
+    <script>
+      // IMPORTANT: include /api since your health endpoint is /api/health
+      window.__API_BASE = "https://notes-copilot.onrender.com/api";
+
+      // Optional: tiny sanity log so you can see it in DevTools
+      console.log("[Notes Copilot] API base =", window.__API_BASE);
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
+
