@@ -9,18 +9,33 @@ from typing import Any, Dict, List, Tuple
 import google.generativeai as genai
 
 # --- Config -----------------------------------------------------------------
-API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+# Support multiple API keys with automatic fallback
+API_KEYS = []
+# Primary key
+primary_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+if primary_key:
+    API_KEYS.append(primary_key)
+
+# Backup keys (supports up to 5 backup keys)
+for i in range(1, 6):
+    backup_key = os.getenv(f"GOOGLE_API_KEY_{i}") or os.getenv(f"GEMINI_API_KEY_{i}")
+    if backup_key:
+        API_KEYS.append(backup_key)
+
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "768"))
 CONTEXT_CHAR_BUDGET = int(os.getenv("GEMINI_CONTEXT_CHAR_BUDGET", "12000"))  # for snippets
 DEFAULT_STUDENT_NAME = os.getenv("STUDENT_NAME", "Student")
 
 # Validate configuration
-if not API_KEY:
+if not API_KEYS:
     import sys
-    print("ERROR: GOOGLE_API_KEY or GEMINI_API_KEY is not set in environment variables.", file=sys.stderr)
-    print("Please check your .env file and ensure you have a valid API key from Google AI Studio.", file=sys.stderr)
+    print("ERROR: No API keys found in environment variables.", file=sys.stderr)
+    print("Set GOOGLE_API_KEY or GOOGLE_API_KEY_1, GOOGLE_API_KEY_2, etc.", file=sys.stderr)
     sys.exit(1)
+
+# Track which key is currently active
+_current_key_index = 0
 
 
 # --- Small helpers -----------------------------------------------------------
@@ -70,15 +85,14 @@ def ask(
     (answer_text, metadata)
       metadata is kept for future extensibility, but empty (no citations).
     """
+    global _current_key_index
+
     question = _strip(question)
     if not question:
         return ("", {})
 
-    # Configure Gemini (once per process is fine; cheap to repeat)
-    if API_KEY:
-        genai.configure(api_key=API_KEY)
-    else:
-        # Key missing → minimal local fallback
+    if not API_KEYS:
+        # No keys available → minimal local fallback
         return (_fallback_no_key(question, snippets), {})
 
     # Build compact context from snippets under a character budget.
@@ -165,33 +179,57 @@ NOW ANSWER THE QUESTION.
         "max_output_tokens": MAX_OUTPUT_TOKENS,
     }
 
-    model = genai.GenerativeModel(MODEL)
+    # Try each API key until one works
+    last_error = None
+    for attempt in range(len(API_KEYS)):
+        try:
+            # Configure with current key
+            current_key = API_KEYS[_current_key_index]
+            genai.configure(api_key=current_key)
 
-    try:
-        resp = model.generate_content(final_prompt, generation_config=generation_config)
+            model = genai.GenerativeModel(MODEL)
+            resp = model.generate_content(final_prompt, generation_config=generation_config)
 
-        # Safety blocks
-        if hasattr(resp, "prompt_feedback") and getattr(resp.prompt_feedback, "block_reason", None):
-            reason = str(resp.prompt_feedback.block_reason)
-            return (f"Sorry — I can't answer that ({reason}).", {})
+            # Safety blocks
+            if hasattr(resp, "prompt_feedback") and getattr(resp.prompt_feedback, "block_reason", None):
+                reason = str(resp.prompt_feedback.block_reason)
+                return (f"Sorry — I can't answer that ({reason}).", {})
 
-        text = _strip(getattr(resp, "text", "") or "")
-        if not text:
-            return (_fallback_empty(), {})
+            text = _strip(getattr(resp, "text", "") or "")
+            if not text:
+                return (_fallback_empty(), {})
 
-        # Light cleanup: occasionally models add stray bracket refs; strip them.
-        text = re.sub(r"\s*\[\d+\]\s*", " ", text)
-        # Ensure we didn't slip in a "Sources" footer
-        text = re.sub(r"(?i)\s*^sources:.*$", "", text, flags=re.MULTILINE).strip()
+            # Light cleanup: occasionally models add stray bracket refs; strip them.
+            text = re.sub(r"\s*\[\d+\]\s*", " ", text)
+            # Ensure we didn't slip in a "Sources" footer
+            text = re.sub(r"(?i)\s*^sources:.*$", "", text, flags=re.MULTILINE).strip()
 
-        return (text, {})
-    except Exception as e:
-        # Network/model exceptions → log and raise for debugging
-        import sys
-        print(f"ERROR: Gemini API call failed: {e}", file=sys.stderr)
-        print(f"ERROR: API_KEY present: {bool(API_KEY)}", file=sys.stderr)
-        print(f"ERROR: MODEL: {MODEL}", file=sys.stderr)
-        raise  # Re-raise so we can see the actual error
+            return (text, {})
+
+        except Exception as e:
+            error_str = str(e).lower()
+            # Check if it's a quota/rate limit error
+            if "quota" in error_str or "429" in error_str or "resource exhausted" in error_str:
+                import sys
+                print(f"API key {_current_key_index + 1} quota exceeded, trying next key...", file=sys.stderr)
+                last_error = e
+                # Move to next key
+                _current_key_index = (_current_key_index + 1) % len(API_KEYS)
+                continue
+            else:
+                # Other errors - log and raise
+                import sys
+                print(f"ERROR: Gemini API call failed: {e}", file=sys.stderr)
+                print(f"ERROR: Using API key index: {_current_key_index + 1}/{len(API_KEYS)}", file=sys.stderr)
+                print(f"ERROR: MODEL: {MODEL}", file=sys.stderr)
+                raise
+
+    # All keys exhausted
+    import sys
+    print(f"ERROR: All {len(API_KEYS)} API keys exhausted", file=sys.stderr)
+    if last_error:
+        raise last_error
+    raise RuntimeError("All API keys have exceeded their quota")
 
 
 # --- Minimal fallbacks -------------------------------------------------------
