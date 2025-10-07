@@ -1,4 +1,5 @@
 # api/routes.py
+# Enrichment support with mode detection
 from __future__ import annotations
 
 import os
@@ -97,11 +98,14 @@ def _mmr_select(query_vec: np.ndarray, doc_vecs: np.ndarray, limit: int, lambda_
         remaining.remove(best_idx)               # type: ignore[arg-type]
     return selected
 
-def _should_show_citations(answer: str, min_distance: float) -> bool:
+def _detect_answer_mode(answer: str, min_distance: float) -> str:
     """
-    Determine if citations should be shown based on answer content and document relevance.
+    Detect the answer mode based on content and document relevance.
 
-    Returns True if answer is from notes, False if from model knowledge.
+    Returns:
+    - "notes_only": Answer from notes only (show "From Notes" tag)
+    - "mixed": Answer with notes + enrichment (show both tags)
+    - "model_only": Answer from model knowledge only (show "Model Knowledge" tag)
     """
     answer_lower = answer.lower() if isinstance(answer, str) else ""
 
@@ -112,11 +116,20 @@ def _should_show_citations(answer: str, min_distance: float) -> bool:
         and "notes" in answer_lower
     )
 
-    # Check if retrieved documents are actually relevant (distance < 0.3 = high similarity)
-    has_relevant_docs = min_distance < 0.3
+    # Check if answer has enrichment marker
+    has_enrichment = "<<<ENRICHMENT_START>>>" in answer
 
-    # Show citations only if answer is from notes
-    return (not has_not_found_phrase) and has_relevant_docs
+    # Check if retrieved documents are actually relevant (distance < 0.5 = reasonably similar)
+    # Note: Lower distance = more similar. Typical range: 0.0 (identical) to 1.0 (completely different)
+    has_relevant_docs = min_distance < 0.5
+
+    # Determine mode
+    if has_not_found_phrase or not has_relevant_docs:
+        return "model_only"
+    elif has_enrichment:
+        return "mixed"
+    else:
+        return "notes_only"
 
 # ----------------------------------------------------------------------
 # Core modules (import defensively)
@@ -317,6 +330,29 @@ def search_pg(q: str, k: int = 5, user=Depends(get_current_user)) -> List[Dict[s
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------------------------------------------------------------
+# History endpoints
+# ----------------------------------------------------------------------
+@router.get("/history")
+def get_history(limit: int = 50, user=Depends(get_current_user)) -> List[Dict[str, Any]]:
+    """Get user's Q&A history, most recent first."""
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+
+    supa = admin_client()
+    try:
+        res = supa.table("qa_history")\
+            .select("id, question, answer, citations, created_at")\
+            .eq("user_id", user["user_id"])\
+            .order("created_at", desc=True)\
+            .limit(limit)\
+            .execute()
+
+        history = res.data or []
+        return history
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"History fetch failed: {exc}") from exc
+
+# ----------------------------------------------------------------------
 # Ask (RAG w/ Gemini)
 # ----------------------------------------------------------------------
 @router.post("/ask")
@@ -398,13 +434,67 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
         )
         out_answer = answer.get("answer") if isinstance(answer, dict) else answer
 
-        # Determine if citations should be shown based on answer content and relevance
+        # Determine answer mode based on content and relevance
         effective_min_distance = min_distance if min_distance != float('inf') else 1.0
-        show_citations = _should_show_citations(out_answer, effective_min_distance)
+        answer_mode = _detect_answer_mode(out_answer, effective_min_distance)
 
-        # Only return citations if answer is from notes
-        citations = ((meta or {}).get("citations") or snippets) if show_citations else []
-        return {"answer": out_answer, "citations": citations}
+        # Process answer based on mode
+        notes_part = ""
+        enrichment_part = ""
+
+        if answer_mode == "mixed" and "<<<ENRICHMENT_START>>>" in out_answer:
+            # Split answer into notes and enrichment parts
+            parts = out_answer.split("<<<ENRICHMENT_START>>>", 1)
+            notes_part = parts[0].strip()
+            enrichment_part = parts[1].strip() if len(parts) > 1 else ""
+            # Clean answer removes the marker
+            out_answer = notes_part + "\n\n" + enrichment_part if enrichment_part else notes_part
+
+        # Determine citations based on mode
+        citations = []
+        if answer_mode in ("notes_only", "mixed"):
+            citations = (meta or {}).get("citations") or snippets
+
+        # Extract unique PDF filenames from citations
+        pdf_sources = []
+        if citations:
+            seen_files = set()
+            for cit in citations:
+                filename = cit.get("filename", "")
+                if filename and filename not in seen_files:
+                    pdf_sources.append(filename)
+                    seen_files.add(filename)
+
+        # Save to history
+        supa = admin_client()
+        try:
+            supa.table("qa_history").insert({
+                "user_id": user["user_id"],
+                "question": q,
+                "answer": out_answer,
+                "citations": citations,
+            }).execute()
+        except Exception:
+            # Don't fail the request if history save fails
+            pass
+
+        result = {
+            "answer": out_answer,
+            "citations": citations,
+            "pdf_sources": pdf_sources,
+            "mode": answer_mode,  # Include mode for frontend
+            "notes_part": notes_part if answer_mode == "mixed" else "",
+            "enrichment_part": enrichment_part if answer_mode == "mixed" else "",
+        }
+
+        # Debug logging
+        import sys
+        print(f"[DEBUG] Answer mode: {answer_mode}", file=sys.stderr)
+        print(f"[DEBUG] Notes part length: {len(notes_part)}", file=sys.stderr)
+        print(f"[DEBUG] Enrichment part length: {len(enrichment_part)}", file=sys.stderr)
+        print(f"[DEBUG] Response keys: {list(result.keys())}", file=sys.stderr)
+
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini call failed: {e}")
 

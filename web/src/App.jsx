@@ -35,6 +35,15 @@ export default function App() {
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState("");
   const [hasSourceCitations, setHasSourceCitations] = useState(false);
+  const [pdfSources, setPdfSources] = useState([]);
+  const [answerMode, setAnswerMode] = useState("notes_only"); // "notes_only", "mixed", "model_only"
+  const [notesPart, setNotesPart] = useState("");
+  const [enrichmentPart, setEnrichmentPart] = useState("");
+
+  // ---- history state ----
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // ---- library state ----
   const [docs, setDocs] = useState([]);
@@ -194,19 +203,45 @@ export default function App() {
     }
   }
 
+  // ---------- history ----------
+  const refreshHistory = async () => {
+    if (!loadToken()) {
+      setHistory([]);
+      return;
+    }
+    setLoadingHistory(true);
+    try {
+      const data = await getJSON("/history?limit=50", { headers: authedHeaders });
+      setHistory(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to load history:", e);
+      setHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   // ---------- ask ----------
   async function handleAsk() {
     if (!question.trim()) return;
-    setAsking(true); setAnswer(""); setHasSourceCitations(false);
+    setAsking(true); setAnswer(""); setHasSourceCitations(false); setPdfSources([]); setAnswerMode("notes_only"); setNotesPart(""); setEnrichmentPart("");
     try {
       const data = await postJSON("/ask", { q: question, k: 5, enrich: true, warm: true }, authedHeaders);
       setAnswer((data?.answer || "").trim());
       // Check if answer came from user's notes (has citations)
       const citations = data?.citations || [];
       setHasSourceCitations(citations.length > 0);
+      setPdfSources(data?.pdf_sources || []);
+      setAnswerMode(data?.mode || "notes_only");
+      setNotesPart(data?.notes_part || "");
+      setEnrichmentPart(data?.enrichment_part || "");
+      // Refresh history after asking a question
+      await refreshHistory();
     } catch (e) {
       setAnswer(`Error: ${e?.message || e}`);
       setHasSourceCitations(false);
+      setPdfSources([]);
+      setAnswerMode("model_only");
     } finally {
       setAsking(false);
     }
@@ -491,24 +526,135 @@ export default function App() {
             {/* Answer section */}
             {answer && (
               <div className={`rounded-2xl border p-6 shadow-2xl transition-all duration-500 ${
-                hasSourceCitations
+                answerMode === "notes_only"
                   ? "border-teal-900/40 bg-teal-950/30 shadow-teal-600/10 hover:shadow-teal-600/20"
-                  : "border-rose-900/40 bg-rose-950/30 shadow-rose-600/10 hover:shadow-rose-600/20"
+                  : answerMode === "model_only"
+                  ? "border-rose-900/40 bg-rose-950/30 shadow-rose-600/10 hover:shadow-rose-600/20"
+                  : "border-teal-900/40 bg-gradient-to-br from-teal-950/30 via-purple-950/20 to-rose-950/30 shadow-purple-600/10 hover:shadow-purple-600/20"
               }`}>
-                <div className="mb-4">
-                  {hasSourceCitations ? (
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  {/* Mode tags */}
+                  {answerMode === "notes_only" && (
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-teal-900/40 text-teal-400 border border-teal-700/50">
                       From Notes
                     </span>
-                  ) : (
+                  )}
+                  {answerMode === "model_only" && (
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-rose-900/40 text-rose-400 border border-rose-700/50">
                       Model Knowledge
                     </span>
                   )}
+                  {answerMode === "mixed" && (
+                    <>
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-teal-900/40 text-teal-400 border border-teal-700/50">
+                        From Notes
+                      </span>
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-rose-900/40 text-rose-400 border border-rose-700/50">
+                        Model Knowledge
+                      </span>
+                    </>
+                  )}
+                  {/* PDF source tags */}
+                  {pdfSources.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {pdfSources.map((filename, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-900/60 text-zinc-400 border border-zinc-700/50"
+                          title={filename}
+                        >
+                          <svg className="w-3 h-3 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                          </svg>
+                          {filename.length > 30 ? filename.substring(0, 27) + '...' : filename}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed">{answer}</div>
+                {/* Display answer - for mixed mode, show parts with visual separation */}
+                {answerMode === "mixed" && notesPart && enrichmentPart ? (
+                  <div className="space-y-4">
+                    <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed p-3 rounded-lg bg-teal-950/20 border-l-2 border-teal-600/50">
+                      {notesPart}
+                    </div>
+                    <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed p-3 rounded-lg bg-rose-950/20 border-l-2 border-rose-600/50">
+                      {enrichmentPart}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed">{answer}</div>
+                )}
               </div>
             )}
+
+            {/* History Panel */}
+            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-6 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
+                  Question History
+                </h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={refreshHistory}
+                    disabled={loadingHistory || !isSignedIn}
+                    className="text-xs text-teal-500 hover:text-teal-400 transition-colors duration-200 disabled:opacity-50"
+                    title={!isSignedIn ? "Sign in to view history" : "Refresh"}
+                  >
+                    {loadingHistory ? "Loading..." : "Refresh"}
+                  </button>
+                  <button
+                    onClick={() => setShowHistory(!showHistory)}
+                    disabled={!isSignedIn}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {showHistory ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              {!isSignedIn ? (
+                <div className="text-zinc-500 text-sm">Sign in to view your question history</div>
+              ) : showHistory ? (
+                history.length === 0 ? (
+                  <div className="text-zinc-500 text-sm">No questions asked yet. Ask your first question above!</div>
+                ) : (
+                  <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                    {history.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-teal-600 to-rose-600 flex items-center justify-center">
+                            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-zinc-300 font-medium text-sm mb-1">{item.question}</div>
+                            <div className="text-zinc-500 text-xs mb-2 line-clamp-2">{item.answer}</div>
+                            <div className="flex items-center gap-2 text-xs text-zinc-600">
+                              <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                              <span>•</span>
+                              <span>{new Date(item.created_at).toLocaleTimeString()}</span>
+                              {item.citations && item.citations.length > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-teal-600">{item.citations.length} citation{item.citations.length !== 1 ? 's' : ''}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="text-zinc-500 text-sm">Click "Show" to view your question history</div>
+              )}
+            </section>
           </div>
         </div>
       </main>
