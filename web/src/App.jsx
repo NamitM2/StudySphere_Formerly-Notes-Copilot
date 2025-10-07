@@ -227,14 +227,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-black">
       {/* Header */}
-      <header className="border-b border-sky-950/50 bg-black/90 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-teal-950/50 bg-black/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-7xl px-6 py-5">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-sky-600 to-orange-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-600/20">
+              <div className="w-10 h-10 bg-gradient-to-br from-teal-600 to-rose-600 rounded-lg flex items-center justify-center shadow-lg shadow-rose-600/20">
                 <span className="text-white font-bold text-lg">N</span>
               </div>
-              <div className="text-2xl font-bold bg-gradient-to-r from-sky-500 to-orange-500 bg-clip-text text-transparent">
+              <div className="text-2xl font-bold bg-gradient-to-r from-teal-500 to-rose-500 bg-clip-text text-transparent">
                 Notes Copilot
               </div>
             </div>
@@ -243,11 +243,11 @@ export default function App() {
             <div
               className={`ml-4 flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-300 ${
                 isSignedIn
-                  ? "bg-sky-950/60 text-sky-500 border border-sky-900/60"
+                  ? "bg-teal-950/60 text-teal-500 border border-teal-900/60"
                   : "bg-red-950/50 text-red-400 border border-red-800/50"
               }`}
             >
-              <div className={`w-2 h-2 rounded-full ${isSignedIn ? "bg-sky-500 animate-pulse" : "bg-red-400"}`} />
+              <div className={`w-2 h-2 rounded-full ${isSignedIn ? "bg-teal-500 animate-pulse" : "bg-red-400"}`} />
               {isSignedIn ? userEmail || "Connected" : "Not Connected"}
             </div>
 
@@ -262,9 +262,9 @@ export default function App() {
           {/* Sidebar: Auth + Library */}
           <aside className="space-y-6">
             {/* Auth Card */}
-            <section className="bg-zinc-950 border border-orange-950/40 rounded-2xl p-6 shadow-2xl shadow-orange-600/5 hover:shadow-orange-600/10 transition-shadow duration-500">
+            <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-6 shadow-2xl shadow-rose-600/5 hover:shadow-rose-600/10 transition-shadow duration-500">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold bg-gradient-to-r from-sky-400 to-orange-400 bg-clip-text text-transparent">Authentication</h3>
+                <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Authentication</h3>
                 {isSignedIn && (
                   <button
                     onClick={doSignOut}
@@ -283,7 +283,7 @@ export default function App() {
                         key={m}
                         className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                           mode === m
-                            ? "bg-sky-700 text-black shadow-lg shadow-sky-600/25"
+                            ? "bg-teal-700 text-black shadow-lg shadow-teal-600/25"
                             : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:bg-zinc-800 hover:text-zinc-300"
                         }`}
                         onClick={() => setMode(m)}
@@ -294,13 +294,13 @@ export default function App() {
                   </div>
 
                   <input
-                    className="w-full px-4 py-3 mb-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-sky-700/50 focus:ring-2 focus:ring-sky-700/20 outline-none transition-all duration-200"
+                    className="w-full px-4 py-3 mb-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-teal-700/50 focus:ring-2 focus:ring-teal-700/20 outline-none transition-all duration-200"
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
                   <input
-                    className="w-full px-4 py-3 mb-4 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-sky-700/50 focus:ring-2 focus:ring-sky-700/20 outline-none transition-all duration-200"
+                    className="w-full px-4 py-3 mb-4 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-teal-700/50 focus:ring-2 focus:ring-teal-700/20 outline-none transition-all duration-200"
                     placeholder="Password"
                     type="password"
                     value={pwd}
@@ -308,7 +308,7 @@ export default function App() {
                   />
 
                   <button
-                    className="w-full py-3 rounded-lg font-medium transition-all duration-300 bg-gradient-to-r from-sky-700 via-sky-600 to-orange-700 text-white hover:from-sky-600 hover:via-orange-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-default shadow-lg shadow-orange-600/25 hover:shadow-orange-600/40 hover:scale-[1.02] active:scale-[0.98]"
+                    className="w-full py-3 rounded-lg font-medium transition-all duration-300 bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default shadow-lg shadow-rose-600/25 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98]"
                     disabled={authBusy || !email || !pwd}
                     onClick={mode === "signin" ? doSignIn : doSignUp}
                   >
@@ -317,18 +317,18 @@ export default function App() {
                 </>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-sky-500 font-medium">{userEmail}</div>
+                  <div className="text-teal-500 font-medium">{userEmail}</div>
                   <div className="text-zinc-500 text-sm">Ready to upload and analyze documents</div>
                 </div>
               )}
             </section>
 
             {/* Library Card */}
-            <section className="bg-zinc-950 border border-sky-950/40 rounded-2xl p-6 shadow-2xl shadow-sky-600/5 hover:shadow-sky-600/10 transition-shadow duration-500">
+            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-6 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold bg-gradient-to-r from-sky-400 to-orange-400 bg-clip-text text-transparent">Document Library</h3>
+                <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Document Library</h3>
                 <button
-                  className="text-xs text-sky-500 hover:text-sky-400 transition-colors duration-200 disabled:opacity-50"
+                  className="text-xs text-teal-500 hover:text-teal-400 transition-colors duration-200 disabled:opacity-50"
                   onClick={refreshDocs}
                   disabled={loadingDocs || !isSignedIn}
                   title={!isSignedIn ? "Sign in to refresh" : "Refresh"}
@@ -348,7 +348,7 @@ export default function App() {
                   {docs.map((d) => (
                     <li
                       key={d.doc_id || d.id}
-                      className="group rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 hover:bg-zinc-900 hover:border-sky-900/40 transition-all duration-200"
+                      className="group rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0">
@@ -375,22 +375,22 @@ export default function App() {
           {/* Main Content */}
           <div className="space-y-8">
             {/* Hero */}
-            <section className="relative rounded-3xl bg-gradient-to-br from-sky-950/60 via-zinc-950 to-orange-950/40 p-8 pt-10 pb-10 border border-sky-950/40 shadow-2xl hover:shadow-sky-600/15 transition-all duration-500 hover:border-sky-900/60 group">
-              <div className="absolute inset-0 bg-gradient-to-br from-sky-700/10 via-transparent to-orange-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl" />
+            <section className="relative rounded-3xl bg-gradient-to-br from-teal-950/60 via-zinc-950 to-rose-950/40 p-8 pt-10 pb-10 border border-teal-950/40 shadow-2xl hover:shadow-teal-600/15 transition-all duration-500 hover:border-teal-900/60 group">
+              <div className="absolute inset-0 bg-gradient-to-br from-teal-700/10 via-transparent to-rose-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl" />
               <div className="relative">
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-sky-500 via-sky-400 to-orange-500 bg-clip-text text-transparent leading-relaxed pb-1">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-teal-500 via-teal-400 to-rose-500 bg-clip-text text-transparent leading-relaxed pb-1">
                   Intelligent Document Analysis
                 </h1>
                 <p className="mt-3 text-lg text-zinc-400">
-                  Upload your documents and unlock insights with AI-powered question answering
+                  Upload your documents and unlock insights with AI-powered answers
                 </p>
               </div>
             </section>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {/* Upload Card */}
-              <section className="bg-zinc-950 border border-sky-950/40 rounded-2xl p-6 shadow-2xl shadow-sky-600/5 h-fit hover:shadow-sky-600/10 transition-shadow duration-500">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-sky-400 to-orange-400 bg-clip-text text-transparent mb-2">Upload Documents</h2>
+              <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-6 shadow-2xl shadow-teal-600/5 h-fit hover:shadow-teal-600/10 transition-shadow duration-500">
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-2">Upload Documents</h2>
                 <p className="text-sm text-zinc-500 mb-4">PDF, Markdown, or Text files (max 200MB)</p>
 
                 <div
@@ -400,17 +400,17 @@ export default function App() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-all duration-300 ${
-                    isDragging ? "border-sky-600 bg-sky-950/30" : "border-zinc-800 bg-zinc-900/30 hover:border-sky-900/60 hover:bg-zinc-900/50"
+                    isDragging ? "border-teal-600 bg-teal-950/30" : "border-zinc-800 bg-zinc-900/30 hover:border-teal-900/60 hover:bg-zinc-900/50"
                   } ${!isSignedIn ? "opacity-50 pointer-events-none" : ""}`}
                 >
                   {file ? (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <svg className="w-8 h-8 text-sky-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-8 h-8 text-teal-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                         </svg>
                         <div className="text-left flex-1 min-w-0">
-                          <p className="text-sm font-medium text-sky-400 truncate">{file.name}</p>
+                          <p className="text-sm font-medium text-teal-400 truncate">{file.name}</p>
                           <p className="text-xs text-zinc-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
                         </div>
                       </div>
@@ -439,7 +439,7 @@ export default function App() {
                       />
                       <button
                         onClick={() => fileRef.current?.click()}
-                        className="px-5 py-2 rounded-lg bg-gradient-to-r from-sky-700 to-sky-600 text-white font-medium hover:from-sky-600 hover:to-sky-500 transition-all duration-300 shadow-lg shadow-sky-600/25 hover:scale-[1.05] active:scale-[0.95]"
+                        className="px-5 py-2 rounded-lg bg-gradient-to-r from-teal-700 to-teal-600 text-white font-medium hover:from-teal-600 hover:to-teal-500 transition-all duration-300 shadow-lg shadow-teal-600/25 hover:scale-[1.05] active:scale-[0.95]"
                         disabled={!isSignedIn}
                       >
                         Browse Files
@@ -451,19 +451,19 @@ export default function App() {
                 <button
                   onClick={handleUpload}
                   disabled={!file || uploading || !isSignedIn}
-                  className="mt-3 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-sky-700 via-sky-600 to-orange-700 text-white hover:from-sky-600 hover:via-orange-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-orange-600/20 hover:scale-[1.02] active:scale-[0.98]"
+                  className="mt-3 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {uploading ? "Uploading..." : "Upload File"}
                 </button>
               </section>
 
               {/* Q&A Card */}
-              <section className="bg-zinc-950 border border-orange-950/40 rounded-2xl p-6 shadow-2xl shadow-orange-600/5 h-fit hover:shadow-orange-600/10 transition-shadow duration-500">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-sky-400 to-orange-400 bg-clip-text text-transparent mb-2">Ask Questions</h2>
+              <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-6 shadow-2xl shadow-rose-600/5 h-fit hover:shadow-rose-600/10 transition-shadow duration-500">
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-2">Ask Questions</h2>
                 <p className="text-sm text-zinc-500 mb-4">Get AI-powered insights from your documents</p>
 
                 <textarea
-                  className="w-full h-24 px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-orange-700/50 focus:ring-2 focus:ring-orange-700/20 outline-none transition-all duration-200 resize-none text-sm"
+                  className="w-full h-24 px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-rose-700/50 focus:ring-2 focus:ring-rose-700/20 outline-none transition-all duration-200 resize-none text-sm"
                   placeholder='e.g., "What are the key findings?" or "Summarize the main arguments..."'
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
@@ -473,7 +473,7 @@ export default function App() {
                 <button
                   onClick={handleAsk}
                   disabled={asking || !question.trim() || !isSignedIn}
-                  className="mt-3 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-sky-700 via-sky-600 to-orange-700 text-white hover:from-sky-600 hover:via-orange-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-orange-600/20 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100"
+                  className="mt-3 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100"
                 >
                   {asking ? (
                     <span className="flex items-center justify-center gap-2">
@@ -492,16 +492,16 @@ export default function App() {
             {answer && (
               <div className={`rounded-2xl border p-6 shadow-2xl transition-all duration-500 ${
                 hasSourceCitations
-                  ? "border-sky-900/40 bg-sky-950/30 shadow-sky-600/10 hover:shadow-sky-600/20"
-                  : "border-orange-900/40 bg-orange-950/30 shadow-orange-600/10 hover:shadow-orange-600/20"
+                  ? "border-teal-900/40 bg-teal-950/30 shadow-teal-600/10 hover:shadow-teal-600/20"
+                  : "border-rose-900/40 bg-rose-950/30 shadow-rose-600/10 hover:shadow-rose-600/20"
               }`}>
                 <div className="mb-4">
                   {hasSourceCitations ? (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-sky-900/40 text-sky-400 border border-sky-700/50">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-teal-900/40 text-teal-400 border border-teal-700/50">
                       From Notes
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-900/40 text-orange-400 border border-orange-700/50">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-rose-900/40 text-rose-400 border border-rose-700/50">
                       Model Knowledge
                     </span>
                   )}
@@ -521,7 +521,7 @@ export default function App() {
               ? "bg-red-950/90 border-red-800/50 text-red-200"
               : toast.type === "info"
               ? "bg-blue-950/90 border-blue-800/50 text-blue-200"
-              : "bg-sky-950/90 border-sky-800/50 text-sky-200"
+              : "bg-teal-950/90 border-teal-800/50 text-teal-200"
           }`}>
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 mt-0.5">
