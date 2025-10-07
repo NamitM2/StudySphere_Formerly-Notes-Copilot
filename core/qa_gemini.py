@@ -11,15 +11,15 @@ import google.generativeai as genai
 # --- Config -----------------------------------------------------------------
 # Support multiple API keys with automatic fallback
 API_KEYS = []
-# Primary key
-primary_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+# Primary key - prefer GOOGLE_API_KEY
+primary_key = os.getenv("GOOGLE_API_KEY")
 if primary_key:
     API_KEYS.append(primary_key)
 
 # Backup keys (supports up to 5 backup keys)
 for i in range(1, 6):
-    backup_key = os.getenv(f"GOOGLE_API_KEY_{i}") or os.getenv(f"GEMINI_API_KEY_{i}")
-    if backup_key:
+    backup_key = os.getenv(f"GOOGLE_API_KEY_{i}")
+    if backup_key and backup_key not in API_KEYS:  # Avoid duplicates
         API_KEYS.append(backup_key)
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
