@@ -61,6 +61,12 @@ export default function App() {
   // ---- toast notifications ----
   const [toast, setToast] = useState(null);
 
+  // ---- theme state ----
+  const [theme, setTheme] = useState(() => {
+    // Check localStorage or default to dark
+    return localStorage.getItem("theme") || "dark";
+  });
+
   const fileRef = useRef(null);
   const dropRef = useRef(null);
 
@@ -69,6 +75,30 @@ export default function App() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000); // Auto-dismiss after 4 seconds
   };
+
+  // Toggle theme
+  const toggleTheme = () => {
+    console.log("[Theme] Current theme:", theme);
+    const newTheme = theme === "dark" ? "light" : "dark";
+    console.log("[Theme] Switching to:", newTheme);
+    setTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+  };
+
+  // Apply theme to document
+  useEffect(() => {
+    console.log("[Theme] useEffect triggered with theme:", theme);
+    const root = document.documentElement;
+    if (theme === "light") {
+      root.classList.remove("dark");
+      root.classList.add("light");
+      console.log("[Theme] Applied light mode classes");
+    } else {
+      root.classList.remove("light");
+      root.classList.add("dark");
+      console.log("[Theme] Applied dark mode classes");
+    }
+  }, [theme]);
 
   // ---------- docs ----------
   const refreshDocs = async () => {
@@ -301,6 +331,33 @@ export default function App() {
             </div>
 
             <div className="ml-auto" />
+
+            {/* Theme toggle button */}
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  <span className="text-sm font-medium bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
+                    Switch to light mode
+                  </span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                  <span className="text-sm font-medium bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
+                    Switch to dark mode
+                  </span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </header>
@@ -513,13 +570,12 @@ export default function App() {
           {/* Main Content */}
           <div className="space-y-6">
             {/* Hero */}
-            <section className="relative rounded-2xl bg-gradient-to-br from-teal-950/60 via-zinc-950 to-rose-950/40 p-6 border border-teal-950/40 shadow-2xl hover:shadow-teal-600/15 transition-all duration-500 hover:border-teal-900/60 group">
-              <div className="absolute inset-0 bg-gradient-to-br from-teal-700/10 via-transparent to-rose-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl" />
+            <section className="relative rounded-2xl bg-gradient-to-br from-teal-950/60 via-rose-950/50 to-rose-900/60 p-6 border border-teal-950/40 shadow-2xl transition-all duration-500">
               <div className="relative">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-500 via-teal-400 to-rose-500 bg-clip-text text-transparent leading-relaxed">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-400 via-rose-400 to-rose-500 bg-clip-text text-transparent leading-relaxed">
                   Intelligent Document Analysis
                 </h1>
-                <p className="mt-2 text-base text-zinc-400">
+                <p className="mt-2 text-base bg-gradient-to-r from-teal-400/80 via-rose-400/90 to-rose-500/90 bg-clip-text text-transparent">
                   Upload your documents and unlock insights with AI-powered answers
                 </p>
               </div>
