@@ -47,6 +47,7 @@ export default function App() {
 
   // ---- library state ----
   const [docs, setDocs] = useState([]);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [libError, setLibError] = useState("");
 
@@ -55,6 +56,7 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState(""); // For displaying token expiration
 
   // ---- toast notifications ----
   const [toast, setToast] = useState(null);
@@ -79,9 +81,15 @@ export default function App() {
     try {
       const data = await getJSON("/docs", { headers: authedHeaders });
       setDocs(Array.isArray(data) ? data : data?.docs || []);
+      setAuthError(""); // Clear auth error on success
     } catch (e) {
-      setLibError(String(e?.message || e));
+      const errorMsg = String(e?.message || e);
+      setLibError(errorMsg);
       setDocs([]);
+      // Check if it's an auth error
+      if (errorMsg.includes("token") || errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
+        setAuthError("Session expired - please sign in again");
+      }
     } finally {
       setLoadingDocs(false);
     }
@@ -213,9 +221,15 @@ export default function App() {
     try {
       const data = await getJSON("/history?limit=50", { headers: authedHeaders });
       setHistory(Array.isArray(data) ? data : []);
+      setAuthError(""); // Clear auth error on success
     } catch (e) {
       console.error("Failed to load history:", e);
       setHistory([]);
+      const errorMsg = String(e?.message || e);
+      // Check if it's an auth error
+      if (errorMsg.includes("token") || errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
+        setAuthError("Session expired - please sign in again");
+      }
     } finally {
       setLoadingHistory(false);
     }
@@ -353,80 +367,169 @@ export default function App() {
               ) : (
                 <div className="space-y-2">
                   <div className="text-teal-500 font-medium">{userEmail}</div>
-                  <div className="text-zinc-500 text-sm">Ready to upload and analyze documents</div>
+                  {authError ? (
+                    <div className="text-red-400 text-sm font-medium">{authError}</div>
+                  ) : (
+                    <div className="text-zinc-500 text-sm">Ready to upload and analyze documents</div>
+                  )}
                 </div>
               )}
             </section>
 
             {/* Library Card */}
-            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-6 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
-              <div className="flex items-center justify-between mb-4">
+            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
+              <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Document Library</h3>
-                <button
-                  className="text-xs text-teal-500 hover:text-teal-400 transition-colors duration-200 disabled:opacity-50"
-                  onClick={refreshDocs}
-                  disabled={loadingDocs || !isSignedIn}
-                  title={!isSignedIn ? "Sign in to refresh" : "Refresh"}
-                >
-                  {loadingDocs ? "Loading..." : "Refresh"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                    onClick={refreshDocs}
+                    disabled={loadingDocs || !isSignedIn}
+                    title={!isSignedIn ? "Sign in to refresh" : "Refresh"}
+                  >
+                    {loadingDocs ? "Loading..." : "Refresh"}
+                  </button>
+                  <button
+                    onClick={() => setShowLibrary(!showLibrary)}
+                    disabled={!isSignedIn}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {showLibrary ? "Hide" : "Show"}
+                  </button>
+                </div>
               </div>
 
               {!isSignedIn ? (
                 <div className="text-zinc-500 text-sm">Sign in to access your library</div>
-              ) : libError ? (
-                <div className="text-red-400 text-sm whitespace-pre-wrap">{libError}</div>
-              ) : docs.length === 0 ? (
-                <div className="text-zinc-500 text-sm">No documents yet. Upload your first file!</div>
+              ) : showLibrary ? (
+                libError ? (
+                  <div className="text-red-400 text-sm whitespace-pre-wrap">{libError}</div>
+                ) : docs.length === 0 ? (
+                  <div className="text-zinc-500 text-sm">No documents yet. Upload your first file!</div>
+                ) : (
+                  <ul className="space-y-2 max-h-80 overflow-y-auto">
+                    {docs.map((d) => (
+                      <li
+                        key={d.doc_id || d.id}
+                        className="group rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-zinc-200 text-sm truncate">{d.filename || d.name}</div>
+                            <div className="text-zinc-500 text-xs mt-0.5">
+                              {d.byte_size ? `${(d.byte_size / (1024 * 1024)).toFixed(2)} MB` : "—"}
+                              {d.created_at ? ` • ${String(d.created_at).slice(0, 10)}` : ""}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteDoc(d.doc_id || d.id)}
+                            className="opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded bg-red-950/50 text-red-400 border border-red-800/30 hover:bg-red-900/50 transition-all duration-200"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )
               ) : (
-                <ul className="space-y-2 max-h-96 overflow-y-auto">
-                  {docs.map((d) => (
-                    <li
-                      key={d.doc_id || d.id}
-                      className="group rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-zinc-200 truncate">{d.filename || d.name}</div>
-                          <div className="text-zinc-500 text-xs mt-1">
-                            {d.byte_size ? `${(d.byte_size / (1024 * 1024)).toFixed(2)} MB` : "—"}
-                            {d.created_at ? ` • ${String(d.created_at).slice(0, 10)}` : ""}
+                <div className="text-zinc-500 text-sm">Click "Show" to view your documents</div>
+              )}
+            </section>
+
+            {/* Question History */}
+            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Question History</h3>
+                <div className="flex gap-2">
+                  <button
+                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                    onClick={refreshHistory}
+                    disabled={loadingHistory || !isSignedIn}
+                    title={!isSignedIn ? "Sign in to view history" : "Refresh"}
+                  >
+                    {loadingHistory ? "Loading..." : "Refresh"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!showHistory) {
+                        // Load history when showing
+                        refreshHistory();
+                      }
+                      setShowHistory(!showHistory);
+                    }}
+                    disabled={!isSignedIn}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {showHistory ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              {!isSignedIn ? (
+                <div className="text-zinc-500 text-sm">Sign in to view your question history</div>
+              ) : showHistory ? (
+                loadingHistory ? (
+                  <div className="text-zinc-500 text-sm">Loading history...</div>
+                ) : history.length === 0 ? (
+                  <div className="text-zinc-500 text-sm">No questions asked yet. Ask your first question above!</div>
+                ) : (
+                  <ul className="space-y-2 max-h-80 overflow-y-auto">
+                    {history.map((item) => (
+                      <li
+                        key={item.id}
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gradient-to-br from-teal-600 to-rose-600 flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-zinc-300 font-medium text-sm mb-0.5 truncate">{item.question}</div>
+                            <div className="text-zinc-500 text-xs mb-1 line-clamp-2">{item.answer}</div>
+                            <div className="flex items-center gap-1.5 text-xs text-zinc-600">
+                              <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                              {item.citations && item.citations.length > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-teal-600">{item.citations.length} citation{item.citations.length !== 1 ? 's' : ''}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleDeleteDoc(d.doc_id || d.id)}
-                          className="opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded bg-red-950/50 text-red-400 border border-red-800/30 hover:bg-red-900/50 transition-all duration-200"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : (
+                <div className="text-zinc-500 text-sm">Click "Show" to view your question history</div>
               )}
             </section>
           </aside>
 
           {/* Main Content */}
-          <div className="space-y-8">
+          <div className="space-y-6">
             {/* Hero */}
-            <section className="relative rounded-3xl bg-gradient-to-br from-teal-950/60 via-zinc-950 to-rose-950/40 p-8 pt-10 pb-10 border border-teal-950/40 shadow-2xl hover:shadow-teal-600/15 transition-all duration-500 hover:border-teal-900/60 group">
-              <div className="absolute inset-0 bg-gradient-to-br from-teal-700/10 via-transparent to-rose-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl" />
+            <section className="relative rounded-2xl bg-gradient-to-br from-teal-950/60 via-zinc-950 to-rose-950/40 p-6 border border-teal-950/40 shadow-2xl hover:shadow-teal-600/15 transition-all duration-500 hover:border-teal-900/60 group">
+              <div className="absolute inset-0 bg-gradient-to-br from-teal-700/10 via-transparent to-rose-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl" />
               <div className="relative">
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-teal-500 via-teal-400 to-rose-500 bg-clip-text text-transparent leading-relaxed pb-1">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-500 via-teal-400 to-rose-500 bg-clip-text text-transparent leading-relaxed">
                   Intelligent Document Analysis
                 </h1>
-                <p className="mt-3 text-lg text-zinc-400">
+                <p className="mt-2 text-base text-zinc-400">
                   Upload your documents and unlock insights with AI-powered answers
                 </p>
               </div>
             </section>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-end">
               {/* Upload Card */}
-              <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-6 shadow-2xl shadow-teal-600/5 h-fit hover:shadow-teal-600/10 transition-shadow duration-500">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-2">Upload Documents</h2>
-                <p className="text-sm text-zinc-500 mb-4">PDF, Markdown, or Text files (max 200MB)</p>
+              <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
+                <h2 className="text-xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-1.5">Upload Documents</h2>
+                <p className="text-sm text-zinc-500 mb-3.5">PDF, Markdown, or Text files (max 200MB)</p>
 
                 <div
                   ref={dropRef}
@@ -434,14 +537,14 @@ export default function App() {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-all duration-300 ${
+                  className={`relative border-2 border-dashed rounded-xl p-3 text-center transition-all duration-300 ${
                     isDragging ? "border-teal-600 bg-teal-950/30" : "border-zinc-800 bg-zinc-900/30 hover:border-teal-900/60 hover:bg-zinc-900/50"
                   } ${!isSignedIn ? "opacity-50 pointer-events-none" : ""}`}
                 >
                   {file ? (
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <svg className="w-8 h-8 text-teal-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                        <svg className="w-7 h-7 text-teal-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                         </svg>
                         <div className="text-left flex-1 min-w-0">
@@ -451,7 +554,7 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => setFile(null)}
-                        className="ml-3 text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0"
+                        className="ml-2 text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0"
                       >
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -459,11 +562,8 @@ export default function App() {
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <div>
-                        <p className="text-zinc-300 font-medium text-sm mb-2">{isDragging ? "Drop your file here" : "Drag & drop or"}</p>
-                      </div>
-
+                    <div className="space-y-1.5">
+                      <p className="text-zinc-300 font-medium text-sm">{isDragging ? "Drop your file here" : "Drag & drop or"}</p>
                       <input
                         ref={fileRef}
                         type="file"
@@ -474,7 +574,7 @@ export default function App() {
                       />
                       <button
                         onClick={() => fileRef.current?.click()}
-                        className="px-5 py-2 rounded-lg bg-gradient-to-r from-teal-700 to-teal-600 text-white font-medium hover:from-teal-600 hover:to-teal-500 transition-all duration-300 shadow-lg shadow-teal-600/25 hover:scale-[1.05] active:scale-[0.95]"
+                        className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-teal-700 to-teal-600 text-white text-sm font-medium hover:from-teal-600 hover:to-teal-500 transition-all duration-300 shadow-lg shadow-teal-600/25 hover:scale-[1.05] active:scale-[0.95]"
                         disabled={!isSignedIn}
                       >
                         Browse Files
@@ -486,19 +586,19 @@ export default function App() {
                 <button
                   onClick={handleUpload}
                   disabled={!file || uploading || !isSignedIn}
-                  className="mt-3 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98]"
+                  className="mt-2.5 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {uploading ? "Uploading..." : "Upload File"}
                 </button>
               </section>
 
               {/* Q&A Card */}
-              <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-6 shadow-2xl shadow-rose-600/5 h-fit hover:shadow-rose-600/10 transition-shadow duration-500">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-2">Ask Questions</h2>
-                <p className="text-sm text-zinc-500 mb-4">Get AI-powered insights from your documents</p>
+              <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-5 shadow-2xl shadow-rose-600/5 h-fit hover:shadow-rose-600/10 transition-shadow duration-500">
+                <h2 className="text-xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-1.5">Ask Questions</h2>
+                <p className="text-sm text-zinc-500 mb-3.5">Get AI-powered insights from your documents</p>
 
                 <textarea
-                  className="w-full h-24 px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-rose-700/50 focus:ring-2 focus:ring-rose-700/20 outline-none transition-all duration-200 resize-none text-sm"
+                  className="w-full h-20 px-3.5 py-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-rose-700/50 focus:ring-2 focus:ring-rose-700/20 outline-none transition-all duration-200 resize-none text-sm"
                   placeholder='e.g., "What are the key findings?" or "Summarize the main arguments..."'
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
@@ -508,7 +608,7 @@ export default function App() {
                 <button
                   onClick={handleAsk}
                   disabled={asking || !question.trim() || !isSignedIn}
-                  className="mt-3 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100"
+                  className="mt-2.5 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {asking ? (
                     <span className="flex items-center justify-center gap-2">
@@ -525,7 +625,7 @@ export default function App() {
 
             {/* Answer section */}
             {answer && (
-              <div className={`rounded-2xl border p-6 shadow-2xl transition-all duration-500 ${
+              <div className={`rounded-2xl border p-5 shadow-2xl transition-all duration-500 ${
                 answerMode === "notes_only"
                   ? "border-teal-900/40 bg-teal-950/30 shadow-teal-600/10 hover:shadow-teal-600/20"
                   : answerMode === "model_only"
@@ -588,73 +688,6 @@ export default function App() {
               </div>
             )}
 
-            {/* History Panel */}
-            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-6 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
-                  Question History
-                </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={refreshHistory}
-                    disabled={loadingHistory || !isSignedIn}
-                    className="text-xs text-teal-500 hover:text-teal-400 transition-colors duration-200 disabled:opacity-50"
-                    title={!isSignedIn ? "Sign in to view history" : "Refresh"}
-                  >
-                    {loadingHistory ? "Loading..." : "Refresh"}
-                  </button>
-                  <button
-                    onClick={() => setShowHistory(!showHistory)}
-                    disabled={!isSignedIn}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
-                  >
-                    {showHistory ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
-
-              {!isSignedIn ? (
-                <div className="text-zinc-500 text-sm">Sign in to view your question history</div>
-              ) : showHistory ? (
-                history.length === 0 ? (
-                  <div className="text-zinc-500 text-sm">No questions asked yet. Ask your first question above!</div>
-                ) : (
-                  <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                    {history.map((item) => (
-                      <div
-                        key={item.id}
-                        className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-teal-600 to-rose-600 flex items-center justify-center">
-                            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-zinc-300 font-medium text-sm mb-1">{item.question}</div>
-                            <div className="text-zinc-500 text-xs mb-2 line-clamp-2">{item.answer}</div>
-                            <div className="flex items-center gap-2 text-xs text-zinc-600">
-                              <span>{new Date(item.created_at).toLocaleDateString()}</span>
-                              <span>•</span>
-                              <span>{new Date(item.created_at).toLocaleTimeString()}</span>
-                              {item.citations && item.citations.length > 0 && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-teal-600">{item.citations.length} citation{item.citations.length !== 1 ? 's' : ''}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              ) : (
-                <div className="text-zinc-500 text-sm">Click "Show" to view your question history</div>
-              )}
-            </section>
           </div>
         </div>
       </main>
