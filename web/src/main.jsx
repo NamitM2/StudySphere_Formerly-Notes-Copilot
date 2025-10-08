@@ -4,8 +4,6 @@ window.__API_BASE =
   (import.meta?.env?.VITE_API_BASE) ||
   "https://notes-copilot.onrender.com/api";
 
-console.log("[NC] main.jsx API_BASE =", window.__API_BASE);
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';

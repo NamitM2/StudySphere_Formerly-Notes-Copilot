@@ -487,13 +487,6 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
             "enrichment_part": enrichment_part if answer_mode == "mixed" else "",
         }
 
-        # Debug logging
-        import sys
-        print(f"[DEBUG] Answer mode: {answer_mode}", file=sys.stderr)
-        print(f"[DEBUG] Notes part length: {len(notes_part)}", file=sys.stderr)
-        print(f"[DEBUG] Enrichment part length: {len(enrichment_part)}", file=sys.stderr)
-        print(f"[DEBUG] Response keys: {list(result.keys())}", file=sys.stderr)
-
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini call failed: {e}")

@@ -9,8 +9,6 @@ const API_BASE = (
   import.meta.env.VITE_API_URL ||
   "https://notes-copilot.onrender.com/api"
 ).replace(/\/$/, "");
-console.log("[NC] VITE_API_URL =", import.meta.env.VITE_API_URL);
-console.log("[NC] API_BASE     =", API_BASE);
 
 async function delJSON(path, headers = {}) {
   const r = await fetch(`${API_BASE}${path}`, { method: "DELETE", headers });
@@ -78,25 +76,20 @@ export default function App() {
 
   // Toggle theme
   const toggleTheme = () => {
-    console.log("[Theme] Current theme:", theme);
     const newTheme = theme === "dark" ? "light" : "dark";
-    console.log("[Theme] Switching to:", newTheme);
     setTheme(newTheme);
     localStorage.setItem("theme", newTheme);
   };
 
   // Apply theme to document
   useEffect(() => {
-    console.log("[Theme] useEffect triggered with theme:", theme);
     const root = document.documentElement;
     if (theme === "light") {
       root.classList.remove("dark");
       root.classList.add("light");
-      console.log("[Theme] Applied light mode classes");
     } else {
       root.classList.remove("light");
       root.classList.add("dark");
-      console.log("[Theme] Applied dark mode classes");
     }
   }, [theme]);
 

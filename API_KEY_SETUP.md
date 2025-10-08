@@ -2,14 +2,14 @@
 
 The system now supports **multiple Gemini API keys with automatic fallback** when quota limits are hit!
 
-## 🔑 How It Works
+## How It Works
 
 When the primary API key hits its quota limit (429 error), the system **automatically switches** to the next available key. This gives you:
 - **5x more requests** with 5 keys = 250 requests/day instead of 50
 - **Zero downtime** - seamless failover
 - **Automatic recovery** - cycles through all keys
 
-## 📝 Environment Variables Setup
+## Environment Variables Setup
 
 ### **Local Development (.env file):**
 
@@ -37,7 +37,7 @@ Add these in your Render dashboard under **Environment**:
 | `GOOGLE_API_KEY_3` | `your-backup-key-3` |
 | etc. | ... |
 
-## 🔄 How Fallback Works
+## How Fallback Works
 
 1. **Start**: Uses `GOOGLE_API_KEY` (primary)
 2. **Quota hit**: Automatically switches to `GOOGLE_API_KEY_1`
@@ -45,17 +45,17 @@ Add these in your Render dashboard under **Environment**:
 4. **Continues**: Cycles through all available keys
 5. **All exhausted**: Returns error (wait for quota reset)
 
-## 📊 Quota Limits
+## Quota Limits
 
 **Free Tier per API key:**
 - 50 requests per day
 - Resets at midnight UTC
 
-**With 5 keys:**
-- 250 requests per day total
+**With 6 keys:**
+- 300 requests per day total
 - System automatically manages rotation
 
-## 🚀 Getting Multiple API Keys
+## Getting Multiple API Keys
 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Click **"Create API Key"**
@@ -63,16 +63,8 @@ Add these in your Render dashboard under **Environment**:
 4. Repeat 5 times (you can create up to 5 keys per account)
 5. Add all keys to your environment
 
-**Pro Tip:** Use different Google accounts to get even more keys!
 
-## 🔐 Security Note
-
-**IMPORTANT:** Your current key is exposed in this chat. You should:
-1. Delete it from [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Generate fresh keys
-3. Update both local `.env` and Render environment
-
-## 🧪 Testing
+Testing
 
 The system will log to console when switching keys:
 
@@ -83,7 +75,7 @@ API key 2 quota exceeded, trying next key...
 
 You'll see which key is active in the logs!
 
-## ⚡ Quick Setup Example
+## Quick Setup Example
 
 ```bash
 # .env file
@@ -96,4 +88,3 @@ GOOGLE_API_KEY_2="AIza...key3"
 
 ---
 
-**Need more requests?** Consider upgrading to Google Cloud paid tier for 1500+ requests/minute!

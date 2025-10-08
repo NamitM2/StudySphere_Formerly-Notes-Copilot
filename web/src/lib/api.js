@@ -4,8 +4,6 @@ const API_BASE = (
   import.meta.env.VITE_API_URL ||
   "https://notes-copilot.onrender.com/api"
 ).replace(/\/$/, "");
-console.log("[NC] VITE_API_URL =", import.meta.env.VITE_API_URL);
-console.log("[NC] API BASE     =", API_BASE);
 
 function joinURL(base, path) {
   const left = base.replace(/\/$/, "");
@@ -17,10 +15,7 @@ async function parseJsonResponse(resp, url) {
   const ct = resp.headers.get("content-type") || "";
   const text = await resp.text();
 
-  console.log(`[NC] ${resp.requestMethod || "HTTP"} ${url} -> ${resp.status} ${resp.statusText} | ${ct}`);
-
   if (!resp.ok) {
-    console.error("[NC] Error body:", text.slice(0, 400));
 
     // Check for token expiry (401 with specific message)
     if (resp.status === 401) {
@@ -41,13 +36,11 @@ async function parseJsonResponse(resp, url) {
     throw new Error(`HTTP ${resp.status} ${resp.statusText} from ${url}\n${text.slice(0, 400)}`);
   }
   if (!ct.includes("application/json")) {
-    console.error("[NC] Non-JSON body (first 200):", text.slice(0, 200));
     throw new Error(`Expected JSON but got '${ct}' from ${url}\n${text.slice(0, 200)}`);
   }
   try {
     return JSON.parse(text);
   } catch (e) {
-    console.error("[NC] JSON parse error:", e, "First 200 chars:", text.slice(0, 200));
     throw new Error(`Invalid JSON from ${url}: ${e.message}`);
   }
 }
