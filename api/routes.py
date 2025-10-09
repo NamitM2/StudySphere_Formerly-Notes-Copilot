@@ -361,6 +361,10 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
     k: int = int(payload.get("k") or 5)
     enrich: bool = bool(payload.get("enrich", True))
     warm: bool = bool(payload.get("warm", True))
+    # New: similarity threshold for dynamic chunk selection
+    # similarity_threshold of 0.80 = max distance of 0.40 (stricter, more relevant)
+    similarity_threshold: float = float(payload.get("similarity_threshold", 0.80))
+    max_chunks: int = int(payload.get("max_chunks", 30))
 
     if not q:
         raise HTTPException(status_code=400, detail="Missing question 'q'")
@@ -373,28 +377,59 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
 
     try:
         q_vec = embed_query(q)
-        fetch_k = max(k * 3, min(20, k * 5))
+        # Fetch more candidates to filter by threshold
+        fetch_k = max_chunks
         hits = _search_fn(user_id=user["user_id"], query=q, query_embedding=q_vec, k=fetch_k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
-    snippets: List[Dict[str, Any]] = []
-    texts: List[str] = []
+    # First pass: collect all hits and filter by similarity threshold
+    # Note: distance in vector search is typically 0.0 (identical) to 2.0 (opposite)
+    # We convert distance to similarity: similarity = 1 - (distance / 2)
+    # So similarity_threshold 0.80 means distance must be <= 0.40
+    max_distance = 2.0 * (1.0 - similarity_threshold)
+
+    candidate_snippets: List[Dict[str, Any]] = []
+    candidate_texts: List[str] = []
     min_distance = float('inf')  # Track minimum distance for citation detection
 
     for h in hits or []:
-        distance = h.get("distance")
+        distance = h.get("distance", 1.0)
         if distance is not None and distance < min_distance:
             min_distance = distance
-        sn = {
-            "filename": h.get("filename") or h.get("file_name") or "file",
-            "page": h.get("page"),
-            "text": h.get("text") or h.get("chunk") or "",
-            "doc_id": h.get("doc_id"),
-        }
-        snippets.append(sn)
-        texts.append(sn["text"])
 
+        # Apply threshold filter
+        if distance <= max_distance:
+            sn = {
+                "filename": h.get("filename") or h.get("file_name") or "file",
+                "page": h.get("page"),
+                "text": h.get("text") or h.get("chunk") or "",
+                "doc_id": h.get("doc_id"),
+                "distance": distance,
+            }
+            candidate_snippets.append(sn)
+            candidate_texts.append(sn["text"])
+
+    # Ensure we have at least k chunks (fallback to top k if threshold is too strict)
+    if len(candidate_snippets) < k:
+        candidate_snippets = []
+        candidate_texts = []
+        for h in (hits or [])[:k]:
+            distance = h.get("distance", 1.0)
+            sn = {
+                "filename": h.get("filename") or h.get("file_name") or "file",
+                "page": h.get("page"),
+                "text": h.get("text") or h.get("chunk") or "",
+                "doc_id": h.get("doc_id"),
+                "distance": distance,
+            }
+            candidate_snippets.append(sn)
+            candidate_texts.append(sn["text"])
+
+    snippets = candidate_snippets
+    texts = candidate_texts
+
+    # Apply MMR for diversity (but keep all threshold-passing chunks)
     if snippets:
         query_terms = _tokenize(q)
         lex_scores = [_lexical_score(sn, query_terms) for sn in snippets]
@@ -407,7 +442,8 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
         if doc_vecs.ndim == 1:
             doc_vecs = doc_vecs.reshape(1, -1)
 
-        mmr_limit = min(len(snippets), max(k * 2, 10))
+        # MMR reranking - use all snippets that passed threshold
+        mmr_limit = len(snippets)  # Don't cut down, just rerank
         mmr_selected = _mmr_select(np.asarray(q_vec).reshape(-1), doc_vecs, mmr_limit)
 
         if mmr_selected:
@@ -417,11 +453,10 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
                 combined = mmr_score + 0.1 * lex
                 scored.append((combined, lex, idx))
             scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-            keep = [idx for _, _, idx in scored[:k]]
-            snippets = [snippets[i] for i in keep]
+            # Keep all snippets but reordered by relevance + diversity
+            snippets = [snippets[idx] for _, _, idx in scored]
         else:
             snippets.sort(key=lambda sn: _lexical_score(sn, query_terms), reverse=True)
-            snippets = snippets[:k]
     else:
         snippets = []
 
@@ -485,6 +520,9 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
             "mode": answer_mode,  # Include mode for frontend
             "notes_part": notes_part if answer_mode == "mixed" else "",
             "enrichment_part": enrichment_part if answer_mode == "mixed" else "",
+            "chunks_retrieved": len(snippets),  # Debug: actual number of chunks used
+            "similarity_threshold_used": similarity_threshold,
+            "max_distance_used": max_distance,
         }
 
         return result

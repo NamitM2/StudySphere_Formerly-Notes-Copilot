@@ -24,7 +24,7 @@ for i in range(1, 6):
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "768"))
-CONTEXT_CHAR_BUDGET = int(os.getenv("GEMINI_CONTEXT_CHAR_BUDGET", "12000"))  # for snippets
+CONTEXT_CHAR_BUDGET = int(os.getenv("GEMINI_CONTEXT_CHAR_BUDGET", "24000"))  # for snippets (doubled for dynamic k)
 DEFAULT_STUDENT_NAME = os.getenv("STUDENT_NAME", "Student")
 
 # Validate configuration
@@ -120,6 +120,7 @@ def ask(
 
     student_name = DEFAULT_STUDENT_NAME
     context = "\n\n".join(blocks) if blocks else "No notes provided"
+    num_chunks = used_count
 
     # Prompt: Notes-first approach with smart enrichment
     final_prompt = f"""
@@ -127,7 +128,7 @@ You are a helpful assistant for a personal Notes Q&A system.
 
 QUESTION: {question}
 
-RETRIEVED NOTES:
+RETRIEVED NOTES ({num_chunks} relevant chunks):
 <<<NOTES_START>>>
 {context}
 <<<NOTES_END>>>
@@ -138,6 +139,7 @@ CRITICAL INSTRUCTIONS:
    - Your FIRST priority is to answer from the NOTES above.
    - If the NOTES contain ANY relevant information about the question, you MUST answer using the NOTES.
    - Even if the question seems like general knowledge, check if the NOTES have specific information about it first.
+   - NOTE: You may have received more chunks than usual if the question matches many parts of the notes - synthesize ALL relevant information.
 
 2. THREE ANSWER MODES:
 
