@@ -260,7 +260,15 @@ export default function App() {
 
   // ---------- ask ----------
   async function handleAsk() {
-    if (!question.trim()) return;
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) return;
+
+    // Client-side validation for question length
+    if (trimmedQuestion.length < 3) {
+      showToast("Question too short (minimum 3 characters)", "error");
+      return;
+    }
+
     setAsking(true); setAnswer(""); setHasSourceCitations(false); setPdfSources([]); setAnswerMode("notes_only"); setNotesPart(""); setEnrichmentPart("");
     try {
       const data = await postJSON("/ask", { q: question, k: 5, enrich: true, warm: true }, authedHeaders);
