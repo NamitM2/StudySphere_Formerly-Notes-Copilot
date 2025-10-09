@@ -159,7 +159,9 @@ CRITICAL INSTRUCTIONS:
    MODE C - GENERAL KNOWLEDGE ONLY (fallback when notes are empty/irrelevant):
    - Use this when: NOTES are empty OR completely irrelevant to the question
    - Start with: "I couldn't find an answer in your notes, but "
-   - Then provide the answer from general knowledge (only if high certainty)
+   - Then provide the answer from general knowledge
+   - IMPORTANT: Answer common knowledge questions (science, history, geography, math) even without notes
+   - Example: "How hot are volcanoes?" → "I couldn't find an answer in your notes, but volcanoes typically range from 700°C to 1,200°C (1,300°F to 2,200°F)."
 
 3. WHEN TO USE ENRICHMENT:
    - ✅ DO enrich: General knowledge questions (capitals, math, science facts, historical events, definitions)
@@ -175,8 +177,9 @@ CRITICAL INSTRUCTIONS:
    - Just answer the question naturally.
 
 5. WHEN UNCERTAIN:
-   - If NOTES have no relevant information AND you're uncertain about the answer, say:
-     "I couldn't find relevant information in your notes to answer this question."
+   - ONLY refuse to answer if the question is about personal/specific information not in the notes
+   - For general knowledge questions (science, history, geography, math, etc.), ALWAYS provide an answer using MODE C
+   - If you genuinely cannot answer, say: "I couldn't find relevant information in your notes to answer this question."
 
 NOW ANSWER THE QUESTION FOLLOWING THESE RULES STRICTLY.
 """.strip()
