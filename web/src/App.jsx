@@ -369,7 +369,7 @@ export default function App() {
           {/* Sidebar: Auth + Library */}
           <aside className="space-y-6">
             {/* Auth Card */}
-            <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-6 shadow-2xl shadow-rose-600/5 hover:shadow-rose-600/10 transition-shadow duration-500">
+            <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Authentication</h3>
                 {isSignedIn && (
@@ -435,7 +435,7 @@ export default function App() {
             </section>
 
             {/* Library Card */}
-            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
+            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Document Library</h3>
                 <div className="flex gap-2">
@@ -496,7 +496,7 @@ export default function App() {
             </section>
 
             {/* Question History */}
-            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
+            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Question History</h3>
                 <div className="flex gap-2">
@@ -571,7 +571,7 @@ export default function App() {
           {/* Main Content */}
           <div className="space-y-6">
             {/* Hero */}
-            <section className="relative rounded-2xl bg-gradient-to-br from-teal-950/60 via-rose-950/50 to-rose-900/60 p-6 border border-teal-950/40 shadow-2xl transition-all duration-500">
+            <section className="relative rounded-2xl bg-gradient-to-br from-teal-950/60 via-rose-950/50 to-rose-900/60 p-6 border border-teal-950/40">
               <div className="relative">
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-400 via-rose-400 to-rose-500 bg-clip-text text-transparent leading-relaxed">
                   Intelligent Document Analysis
@@ -584,7 +584,7 @@ export default function App() {
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-end">
               {/* Upload Card */}
-              <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5 shadow-2xl shadow-teal-600/5 hover:shadow-teal-600/10 transition-shadow duration-500">
+              <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5">
                 <h2 className="text-xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-1.5">Upload Documents</h2>
                 <p className="text-sm text-zinc-500 mb-3.5">PDF, Markdown, or Text files (max 200MB)</p>
 
@@ -650,7 +650,7 @@ export default function App() {
               </section>
 
               {/* Q&A Card */}
-              <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-5 shadow-2xl shadow-rose-600/5 h-fit hover:shadow-rose-600/10 transition-shadow duration-500">
+              <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-5 h-fit">
                 <h2 className="text-xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-1.5">Ask Questions</h2>
                 <p className="text-sm text-zinc-500 mb-3.5">Get AI-powered insights from your documents</p>
 
@@ -682,12 +682,12 @@ export default function App() {
 
             {/* Answer section */}
             {answer && (
-              <div className={`rounded-2xl border p-5 shadow-2xl transition-all duration-500 ${
+              <div className={`rounded-2xl border p-5 ${
                 answerMode === "notes_only"
-                  ? "border-teal-900/40 bg-teal-950/30 shadow-teal-600/10 hover:shadow-teal-600/20"
+                  ? "border-teal-900/40 bg-teal-950/30"
                   : answerMode === "model_only"
-                  ? "border-rose-900/40 bg-rose-950/30 shadow-rose-600/10 hover:shadow-rose-600/20"
-                  : "border-teal-900/40 bg-gradient-to-br from-teal-950/30 via-purple-950/20 to-rose-950/30 shadow-purple-600/10 hover:shadow-purple-600/20"
+                  ? "border-rose-900/40 bg-rose-950/30"
+                  : "border-teal-900/40 bg-gradient-to-br from-teal-950/30 via-purple-950/20 to-rose-950/30"
               }`}>
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                   {/* Mode tags */}
