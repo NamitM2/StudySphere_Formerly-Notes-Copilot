@@ -172,7 +172,7 @@ except Exception:
 # ----------------------------------------------------------------------
 router = APIRouter()
 
-@router.get("/health")
+@router.api_route("/health", methods=["GET", "HEAD"])
 def health() -> Dict[str, Any]:
     return {"ok": True}
 
