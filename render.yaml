@@ -21,5 +21,9 @@ services:
         value: text-embedding-004
       - key: EMBED_DIM
         value: "768"
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-latest
+      - key: GEMINI_VISION_MODEL
+        value: gemini-2.5-flash-latest
       - key: FRONTEND_ORIGIN
         value: https://<your-vercel-app>.vercel.app
