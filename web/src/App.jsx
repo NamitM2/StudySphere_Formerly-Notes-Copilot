@@ -4,6 +4,7 @@ import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader, handl
 import { postFile, postJSON, getJSON, delJSON, setUnauthorizedHandler } from "./lib/api";
 import IDEPage from "./pages/IDEPage";
 import LoadingLogo from "./components/LoadingLogo";
+import { Analytics } from "@vercel/analytics/react";
 
 export default function App() {
   // ---- navigation state ----
@@ -770,6 +771,7 @@ export default function App() {
           </div>
         </div>
       )}
+      <Analytics />
     </div>
   );
 }
