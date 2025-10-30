@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader, handleEmailVerification } from "./lib/auth";
 import { postFile, postJSON, getJSON } from "./lib/api";
-import IDEPage from "./pages/IDEPage";
 
 // Only needed for DELETE helper
 const API_BASE = (
@@ -18,9 +17,6 @@ async function delJSON(path, headers = {}) {
 }
 
 export default function App() {
-  // ---- navigation state ----
-  const [currentPage, setCurrentPage] = useState("notes"); // "notes" or "ide"
-
   // ---- auth state ----
   const [token, setToken] = useState(loadToken());
   const [userEmail, setUserEmail] = useState(loadUserEmail());
@@ -308,11 +304,6 @@ export default function App() {
     }
   }
 
-  // If on IDE page, show IDE component
-  if (currentPage === "ide") {
-    return <IDEPage />;
-  }
-
   return (
     <div className="min-h-screen bg-black">
       {/* Header */}
@@ -326,30 +317,6 @@ export default function App() {
               <div className="text-2xl font-bold bg-gradient-to-r from-teal-500 to-rose-500 bg-clip-text text-transparent">
                 Notes Copilot
               </div>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex gap-2 ml-4">
-              <button
-                onClick={() => setCurrentPage("notes")}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  currentPage === "notes"
-                    ? "bg-teal-700 text-white"
-                    : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
-                }`}
-              >
-                Notes
-              </button>
-              <button
-                onClick={() => setCurrentPage("ide")}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  currentPage === "ide"
-                    ? "bg-teal-700 text-white"
-                    : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
-                }`}
-              >
-                Assignment IDE
-              </button>
             </div>
 
             {/* Signed-in status pill */}

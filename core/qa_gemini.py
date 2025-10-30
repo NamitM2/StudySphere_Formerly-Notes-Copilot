@@ -22,7 +22,7 @@ for i in range(1, 6):
     if backup_key and backup_key not in API_KEYS:  # Avoid duplicates
         API_KEYS.append(backup_key)
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "768"))
 CONTEXT_CHAR_BUDGET = int(os.getenv("GEMINI_CONTEXT_CHAR_BUDGET", "24000"))  # for snippets (doubled for dynamic k)
 DEFAULT_STUDENT_NAME = os.getenv("STUDENT_NAME", "Student")
@@ -96,12 +96,14 @@ def ask(
         return (_fallback_no_key(question, snippets), {})
 
     # Build compact context from snippets under a character budget.
+    print(f"[QA] Received {len(snippets or [])} snippets")
     blocks: List[str] = []
     used_count = 0
     running = 0
     for i, sn in enumerate(snippets or []):
         txt = _strip((sn or {}).get("text") or "")
         if not txt:
+            print(f"[QA] Skipping snippet {i} - empty text")
             continue
         piece = _format_snippet(
             {
@@ -113,6 +115,7 @@ def ask(
         )
         delta = len(piece) + 2
         if running + delta > CONTEXT_CHAR_BUDGET and used_count > 0:
+            print(f"[QA] Truncating at snippet {i} - budget exceeded")
             break
         blocks.append(piece)
         running += delta
@@ -121,6 +124,7 @@ def ask(
     student_name = DEFAULT_STUDENT_NAME
     context = "\n\n".join(blocks) if blocks else "No notes provided"
     num_chunks = used_count
+    print(f"[QA] Built context with {num_chunks} chunks, {running} characters")
 
     # Prompt: Notes-first approach with smart enrichment
     final_prompt = f"""

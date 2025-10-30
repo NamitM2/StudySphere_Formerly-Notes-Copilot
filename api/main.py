@@ -3,6 +3,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router as api_router
+from api.routes_v2.ide_routes import router as ide_router
+from core.background_worker import start_worker
 
 # Get frontend origin from environment variable
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://notes-copilot.vercel.app")
@@ -33,3 +35,43 @@ app.add_middleware(
 # IMPORTANT: this puts ALL your existing routes under /api/...
 # e.g. /health -> /api/health, /docs -> /api/docs
 app.include_router(api_router, prefix="/api")
+
+# NEW: Assignment IDE routes
+app.include_router(ide_router, prefix="/api")
+
+# Start background worker for async document processing
+start_worker()
+
+# Warm up critical dependencies to avoid cold start on first request
+@app.on_event("startup")
+async def startup_warmup():
+    """
+    Pre-initialize expensive dependencies during server startup.
+    This eliminates the ~5-10 second cold start penalty on first request.
+    """
+    import asyncio
+
+    def _warmup():
+        print("[STARTUP] Warming up Gemini SDK and embeddings...")
+        try:
+            # Import and initialize embedding system
+            from core.embeddings import embed_query
+            # This will trigger _ensure_gemini() and import google.generativeai
+            # but won't make an API call (just configures the client)
+            print("[STARTUP] Embedding system ready!")
+        except Exception as e:
+            print(f"[STARTUP] Warning: Failed to warm up embeddings: {e}")
+
+        try:
+            # Pre-configure Gemini text generation
+            import google.generativeai as genai
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if api_key:
+                genai.configure(api_key=api_key)
+                print("[STARTUP] Gemini text generation ready!")
+        except Exception as e:
+            print(f"[STARTUP] Warning: Failed to warm up text generation: {e}")
+
+    # Run warmup in background thread to not block startup
+    await asyncio.to_thread(_warmup)
+    print("[STARTUP] Server warmup complete!")

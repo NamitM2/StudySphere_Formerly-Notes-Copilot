@@ -107,8 +107,105 @@ html.light .text-white {
   @apply rounded-2xl bg-neutral-900/80 border border-white/10 p-5 shadow-lg;
 }
 
-/* (Optional) the v4 way to declare a “utility” class (aliased to .btn) */
+/* (Optional) the v4 way to declare a "utility" class (aliased to .btn) */
 /* @utility btn {
   @apply inline-flex items-center justify-center rounded-lg bg-violet-600
          hover:bg-violet-500 transition px-4 py-2 font-medium;
 } */
+
+/* Custom Scrollbar Styles */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #0d9488 #18181b;
+}
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #0d9488 0%, #14b8a6 100%);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #14b8a6 0%, #2dd4bf 100%);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, #0f766e 0%, #0d9488 100%);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Custom scrollbar for specific sections with rose accent */
+.scrollbar-rose::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #e11d48 0%, #f43f5e 100%);
+}
+
+.scrollbar-rose::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #f43f5e 0%, #fb7185 100%);
+}
+
+.scrollbar-rose::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, #be123c 0%, #e11d48 100%);
+}
+
+/* Slide animations */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.slide-in {
+  animation: slideInFromRight 0.3s ease-out;
+  /* Ensure panel doesn't cause overflow during animation */
+  will-change: transform;
+}
+
+.slide-out {
+  animation: slideOutToRight 0.3s ease-out;
+  will-change: transform;
+}
+
+/* Fade in animation for toast */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}

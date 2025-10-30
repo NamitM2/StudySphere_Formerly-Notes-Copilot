@@ -119,9 +119,10 @@ def _detect_answer_mode(answer: str, min_distance: float) -> str:
     # Check if answer has enrichment marker
     has_enrichment = "<<<ENRICHMENT_START>>>" in answer
 
-    # Check if retrieved documents are actually relevant (distance < 0.5 = reasonably similar)
-    # Note: Lower distance = more similar. Typical range: 0.0 (identical) to 1.0 (completely different)
-    has_relevant_docs = min_distance < 0.5
+    # Check if retrieved documents are actually relevant (distance < 0.85 = reasonably similar)
+    # Note: Lower distance = more similar. Cosine distance range: 0.0 (identical) to 2.0 (opposite)
+    # For document search, distances up to 0.85 are considered relevant
+    has_relevant_docs = min_distance < 0.85
 
     # Determine mode
     if has_not_found_phrase or not has_relevant_docs:
@@ -217,19 +218,57 @@ async def upload_document(
     if len(content) > 200 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 200MB)")
 
+    # Process document synchronously with local embeddings (fast!)
     try:
-        info = ingest_file(
+        from core.ingest_pg import ingest_file
+
+        result = ingest_file(
             user_id=user["user_id"],
             filename=file.filename,
             file_bytes=content,
-            mime=file.content_type or "application/octet-stream",
+            mime=file.content_type,
         )
-        # Expect info like: {"ok":True,"doc_id":..,"filename":..,"chunks":..}
-        return info
+
+        return {
+            "ok": True,
+            "doc_id": result.get("doc_id"),
+            "filename": result.get("filename"),
+            "chunks": result.get("chunks", 0),
+            "elapsed_ms": result.get("elapsed_ms", 0),
+        }
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"File processing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"File upload failed: {e}")
+
+# ----------------------------------------------------------------------
+# Get document processing status
+# ----------------------------------------------------------------------
+@router.get("/docs/{doc_id}/status")
+def get_document_status(doc_id: int, user=Depends(get_current_user)) -> Dict[str, Any]:
+    """Check the processing status of a document"""
+    supa = admin_client()
+    try:
+        res = supa.table("documents").select(
+            "id, filename, status, processing_started_at, processing_completed_at, processing_error"
+        ).eq("id", doc_id).eq("user_id", user["user_id"]).limit(1).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Status check failed: {exc}") from exc
+
+    docs = res.data or []
+    if not docs:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    doc = docs[0]
+    return {
+        "doc_id": doc["id"],
+        "filename": doc["filename"],
+        "status": doc.get("status", "ready"),
+        "processing_started_at": doc.get("processing_started_at"),
+        "processing_completed_at": doc.get("processing_completed_at"),
+        "error": doc.get("processing_error")
+    }
 
 # ----------------------------------------------------------------------
 # List documents
@@ -237,7 +276,7 @@ async def upload_document(
 @router.get("/docs")
 def list_docs(user=Depends(get_current_user)) -> List[Dict[str, Any]]:
     supa = admin_client()
-    fields = "id, filename, mime, byte_size, created_at, storage_path"
+    fields = "id, filename, mime, byte_size, created_at, storage_path, status"
     try:
         res = supa.table("documents").select(fields).eq("user_id", user["user_id"]).limit(50).execute()
     except APIError as api_err:
@@ -264,6 +303,7 @@ def list_docs(user=Depends(get_current_user)) -> List[Dict[str, Any]]:
             "byte_size": row.get("byte_size"),
             "created_at": row.get("created_at"),
             "storage_path": row.get("storage_path"),
+            "status": row.get("status", "ready"),
         })
     return out
 
@@ -330,6 +370,60 @@ def search_pg(q: str, k: int = 5, user=Depends(get_current_user)) -> List[Dict[s
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------------------------------------------------------------
+# Multimodal search (text + images)
+# ----------------------------------------------------------------------
+@router.get("/search/multimodal")
+def search_multimodal_endpoint(
+    q: str,
+    k: int = 10,
+    include_visual: bool = True,
+    user=Depends(get_current_user)
+) -> List[Dict[str, Any]]:
+    """Search across both text chunks and visual content (images)."""
+    if not q or not q.strip():
+        return []
+    if len(q.strip()) > 1000:
+        raise HTTPException(status_code=400, detail="Query too long (max 1000)")
+    if len(q.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Query too short (min 3)")
+    if k < 1 or k > 30:
+        raise HTTPException(status_code=400, detail="k must be between 1 and 30")
+
+    try:
+        from core.search_multimodal import search_multimodal
+        q_vec = embed_query(q)
+        results = search_multimodal(
+            user_id=user["user_id"],
+            query_embedding=q_vec,
+            k=int(k),
+            include_visual=include_visual,
+        )
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Multimodal search failed: {str(e)}")
+
+
+@router.get("/images/{doc_id}")
+def get_document_images(doc_id: int, user=Depends(get_current_user)) -> List[Dict[str, Any]]:
+    """Get all images for a specific document."""
+    try:
+        from core.ingest_visual import get_images_for_document
+
+        # Verify document belongs to user
+        supa = admin_client()
+        doc_res = supa.table("documents").select("id").eq("id", doc_id).eq("user_id", user["user_id"]).limit(1).execute()
+        if not doc_res.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        images = get_images_for_document(doc_id)
+        return images
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve images: {str(e)}")
+
+
+# ----------------------------------------------------------------------
 # History endpoints
 # ----------------------------------------------------------------------
 @router.get("/history")
@@ -362,9 +456,12 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
     enrich: bool = bool(payload.get("enrich", True))
     warm: bool = bool(payload.get("warm", True))
     # New: similarity threshold for dynamic chunk selection
-    # similarity_threshold of 0.80 = max distance of 0.40 (stricter, more relevant)
-    similarity_threshold: float = float(payload.get("similarity_threshold", 0.80))
+    # similarity_threshold of 0.60 = max distance of 0.80 (balanced relevance)
+    # Note: cosine distance ranges from 0.0 (identical) to 2.0 (opposite)
+    # For resume/notes queries, distances of 0.6-0.8 are typical and relevant
+    similarity_threshold: float = float(payload.get("similarity_threshold", 0.60))
     max_chunks: int = int(payload.get("max_chunks", 30))
+    include_visual: bool = bool(payload.get("include_visual", True))  # Multimodal by default
 
     if not q:
         raise HTTPException(status_code=400, detail="Missing question 'q'")
@@ -377,9 +474,26 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
 
     try:
         q_vec = embed_query(q)
-        # Fetch more candidates to filter by threshold
+        # Try multimodal search first (if enabled and tables exist)
         fetch_k = max_chunks
-        hits = _search_fn(user_id=user["user_id"], query=q, query_embedding=q_vec, k=fetch_k)
+        hits = []
+
+        if include_visual:
+            try:
+                from core.search_multimodal import search_multimodal
+                hits = search_multimodal(
+                    user_id=user["user_id"],
+                    query_embedding=q_vec,
+                    k=fetch_k,
+                    include_visual=True,
+                )
+            except Exception as multimodal_err:
+                # Fallback to text-only search if multimodal fails
+                print(f"Multimodal search failed, falling back to text-only: {multimodal_err}")
+                hits = _search_fn(user_id=user["user_id"], query=q, query_embedding=q_vec, k=fetch_k)
+        else:
+            hits = _search_fn(user_id=user["user_id"], query=q, query_embedding=q_vec, k=fetch_k)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
@@ -393,8 +507,11 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
     candidate_texts: List[str] = []
     min_distance = float('inf')  # Track minimum distance for citation detection
 
+    print(f"[ASK] Search returned {len(hits or [])} hits")
+    print(f"[ASK] Similarity threshold: {similarity_threshold}, max_distance: {max_distance}")
     for h in hits or []:
         distance = h.get("distance", 1.0)
+        print(f"[ASK] Hit distance: {distance}")
         if distance is not None and distance < min_distance:
             min_distance = distance
 
@@ -409,54 +526,74 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
             }
             candidate_snippets.append(sn)
             candidate_texts.append(sn["text"])
+        else:
+            print(f"[ASK] Filtered out chunk with distance {distance} (threshold: {max_distance})")
 
-    # Ensure we have at least k chunks (fallback to top k if threshold is too strict)
-    if len(candidate_snippets) < k:
-        candidate_snippets = []
-        candidate_texts = []
-        for h in (hits or [])[:k]:
-            distance = h.get("distance", 1.0)
-            sn = {
-                "filename": h.get("filename") or h.get("file_name") or "file",
-                "page": h.get("page"),
-                "text": h.get("text") or h.get("chunk") or "",
-                "doc_id": h.get("doc_id"),
-                "distance": distance,
-            }
-            candidate_snippets.append(sn)
-            candidate_texts.append(sn["text"])
+    # Only use chunks that passed the similarity threshold
+    # Use all chunks that passed the threshold - let MMR handle diversity
+    print(f"[ASK] Candidate snippets after first filter: {len(candidate_snippets)}, min_distance: {min_distance}")
 
-    snippets = candidate_snippets
-    texts = candidate_texts
+    # Optional: Apply a more relaxed second filter only if we have too many results
+    # This keeps chunks within a reasonable range of the best match
+    if candidate_snippets and min_distance != float('inf') and len(candidate_snippets) > 20:
+        # Only apply secondary filter if we have > 20 candidates
+        # More relaxed cutoff: within 0.25 of best match (was 0.15)
+        distance_cutoff = min_distance + 0.25
+        print(f"[ASK] Too many candidates ({len(candidate_snippets)}), applying secondary filter with cutoff: {distance_cutoff}")
+        filtered_snippets = []
+        filtered_texts = []
+        for i, sn in enumerate(candidate_snippets):
+            if sn["distance"] <= distance_cutoff:
+                filtered_snippets.append(sn)
+                filtered_texts.append(candidate_texts[i])
+            else:
+                print(f"[ASK] Second filter removed chunk with distance {sn['distance']} (cutoff: {distance_cutoff})")
+        snippets = filtered_snippets
+        texts = filtered_texts
+    else:
+        # Use all candidates that passed the threshold
+        snippets = candidate_snippets
+        texts = candidate_texts
 
-    # Apply MMR for diversity (but keep all threshold-passing chunks)
+    print(f"[ASK] Final snippets after all filtering: {len(snippets)}")
+
+    # Apply MMR for diversity (limit to top 15 for performance)
     if snippets:
         query_terms = _tokenize(q)
         lex_scores = [_lexical_score(sn, query_terms) for sn in snippets]
 
+        # Limit MMR processing to top 15 snippets for performance
+        # More than 15 causes slow embedding generation
+        mmr_input_limit = min(15, len(snippets))
+        snippets_for_mmr = snippets[:mmr_input_limit]
+        texts_for_mmr = texts[:mmr_input_limit]
+
         try:
-            doc_vecs = np.asarray(embed_texts(texts), dtype="float32")
+            doc_vecs = np.asarray(embed_texts(texts_for_mmr), dtype="float32")
         except Exception:
-            doc_vecs = np.zeros((len(snippets), len(np.asarray(q_vec).reshape(-1))), dtype="float32")
+            doc_vecs = np.zeros((len(snippets_for_mmr), len(np.asarray(q_vec).reshape(-1))), dtype="float32")
 
         if doc_vecs.ndim == 1:
             doc_vecs = doc_vecs.reshape(1, -1)
 
-        # MMR reranking - use all snippets that passed threshold
-        mmr_limit = len(snippets)  # Don't cut down, just rerank
+        # MMR reranking - select top k diverse chunks
+        mmr_limit = min(k * 2, len(snippets_for_mmr))  # 2x k for better diversity
         mmr_selected = _mmr_select(np.asarray(q_vec).reshape(-1), doc_vecs, mmr_limit)
 
         if mmr_selected:
             scored: List[tuple[float, float, int]] = []
             for idx, mmr_score in mmr_selected:
-                lex = lex_scores[idx] if lex_scores else 0.0
+                lex = lex_scores[idx] if idx < len(lex_scores) else 0.0
                 combined = mmr_score + 0.1 * lex
                 scored.append((combined, lex, idx))
             scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-            # Keep all snippets but reordered by relevance + diversity
-            snippets = [snippets[idx] for _, _, idx in scored]
+            # Reorder the MMR-processed snippets, keep only top results
+            snippets = [snippets_for_mmr[idx] for _, _, idx in scored]
         else:
-            snippets.sort(key=lambda sn: _lexical_score(sn, query_terms), reverse=True)
+            # Fallback: just use top k by lexical score
+            snippets_with_scores = [(sn, _lexical_score(sn, query_terms)) for sn in snippets]
+            snippets_with_scores.sort(key=lambda x: x[1], reverse=True)
+            snippets = [sn for sn, _ in snippets_with_scores[:k * 2]]
     else:
         snippets = []
 
@@ -488,7 +625,8 @@ def ask_notes(payload: Dict[str, Any], user=Depends(get_current_user)) -> Dict[s
         # Determine citations based on mode
         citations = []
         if answer_mode in ("notes_only", "mixed"):
-            citations = (meta or {}).get("citations") or snippets
+            # Use citations from meta if available, otherwise use top k snippets
+            citations = (meta or {}).get("citations") or snippets[:k]
 
         # Extract unique PDF filenames from citations
         pdf_sources = []

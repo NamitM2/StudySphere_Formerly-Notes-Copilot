@@ -12,4 +12,7 @@ google-generativeai
 supabase
 postgrest
 pymupdf
+pillow
+sentence-transformers
+torch
 

@@ -85,16 +85,21 @@ def _pdf_chunks(file_bytes: bytes, chunk_chars: int = 360, overlap: int = 90) ->
     empty_pages = 0
 
     for i, page in enumerate(reader.pages):
-        raw = page.extract_text() or ""
-        raw = _sanitize_text(raw)
-        if not raw:
-            empty_pages += 1
+        try:
+            _safe_print(f"[PDF] Extracting page {i+1}...")
+            raw = page.extract_text() or ""
+            raw = _sanitize_text(raw)
+            if not raw:
+                empty_pages += 1
+                continue
+            _safe_print(f"[PDF] Page {i+1}: Extracted {len(raw)} chars")
+            for seg in split_text(raw, max_chars=chunk_chars, overlap=overlap):
+                seg = _sanitize_text(seg)
+                if seg:
+                    pieces.append((i + 1, seg))  # 1-based page
+        except Exception as e:
+            _safe_print(f"[PDF] ERROR extracting page {i+1}: {e}")
             continue
-        _safe_print(f"[PDF] Page {i+1}: Extracted {len(raw)} chars")
-        for seg in split_text(raw, max_chars=chunk_chars, overlap=overlap):
-            seg = _sanitize_text(seg)
-            if seg:
-                pieces.append((i + 1, seg))  # 1-based page
 
     if empty_pages == len(reader.pages):
         _safe_print(f"[PDF] WARNING: No text extracted from any page. This PDF may be scanned/image-based.")
@@ -180,24 +185,56 @@ def ingest_file(
         else:
             chunk_pairs = _plain_chunks(file_bytes)
 
+        # If no text but it's a PDF, try visual processing before giving up
+        if not chunk_pairs and filename.lower().endswith(".pdf"):
+            _safe_print(f"[INGEST] No text found - checking for images...")
+            try:
+                from core.ingest_visual import ingest_visual_content
+                visual_result = ingest_visual_content(
+                    doc_id=doc_id,
+                    user_id=user_id,
+                    filename=filename,
+                    pdf_bytes=file_bytes,
+                    min_images=1,  # At least 1 image required
+                )
+
+                if visual_result.get("images_stored", 0) > 0:
+                    _safe_print(f"[INGEST] PDF processed as image-only document: {visual_result['images_stored']} images")
+                    ms = int((time.time() - t0) * 1000)
+                    return {
+                        "doc_id": doc_id,
+                        "filename": filename,
+                        "bytes": len(file_bytes),
+                        "pages": visual_result.get("image_summary", {}).get("pages_with_images", 1),
+                        "chunks": 0,  # No text chunks
+                        "elapsed_ms": ms,
+                        "visual": visual_result,
+                        "image_only": True,
+                    }
+            except Exception as ve:
+                _safe_print(f"[INGEST] Visual processing also failed: {ve}")
+
+            # If we get here, both text and visual processing failed
+            _safe_print(f"[INGEST] ERROR: No text or images could be extracted from {filename}")
+            supa.table("documents").delete().eq("id", doc_id).execute()
+            try:
+                delete_paths([storage_path])
+            except Exception:
+                pass
+            raise RuntimeError(
+                "No content could be extracted from this PDF. "
+                "This PDF appears to be empty or corrupted."
+            )
+
         if not chunk_pairs:
-            # Remove empty doc row and stored file (no useful text)
+            # Non-PDF files need text
             _safe_print(f"[INGEST] WARNING: No chunks extracted from {filename}")
             supa.table("documents").delete().eq("id", doc_id).execute()
             try:
                 delete_paths([storage_path])
             except Exception:
                 pass
-
-            # Provide helpful error message
-            if filename.lower().endswith(".pdf"):
-                raise RuntimeError(
-                    "No text could be extracted from this PDF. "
-                    "This usually means the PDF is scanned or image-based. "
-                    "Please try a PDF with searchable text, or use a tool to convert scanned PDFs to text first."
-                )
-            else:
-                raise RuntimeError(f"No text could be extracted from {filename}")
+            raise RuntimeError(f"No text could be extracted from {filename}")
 
         pages: List[int] = [p for p, _ in chunk_pairs]
         texts: List[str] = [t for _, t in chunk_pairs]
@@ -256,7 +293,8 @@ def ingest_file(
 
         ms = int((time.time() - t0) * 1000)
         _safe_print(f"[INGEST] Successfully ingested '{filename}': {len(rows)} chunks in {ms/1000:.1f}s")
-        return {
+
+        result = {
             "doc_id": doc_id,
             "filename": filename,
             "bytes": len(file_bytes),
@@ -264,6 +302,25 @@ def ingest_file(
             "chunks": len(rows),
             "elapsed_ms": ms,
         }
+
+        # Process visual content for PDFs
+        if filename.lower().endswith(".pdf"):
+            try:
+                from core.ingest_visual import ingest_visual_content
+                _safe_print(f"[INGEST] Processing visual content...")
+                visual_result = ingest_visual_content(
+                    doc_id=doc_id,
+                    user_id=user_id,
+                    filename=filename,
+                    pdf_bytes=file_bytes,
+                )
+                result["visual"] = visual_result
+            except Exception as ve:
+                # Don't fail the entire ingest if visual processing fails
+                _safe_print(f"[INGEST] WARNING: Visual content processing failed: {ve}")
+                result["visual"] = {"error": str(ve)}
+
+        return result
 
     except Exception as e:
         # ---- Rollback on any failure after doc insert ------------------------

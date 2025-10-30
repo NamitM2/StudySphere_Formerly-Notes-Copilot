@@ -11,6 +11,11 @@ _EMBED_MODEL_RAW = os.getenv("EMBED_MODEL", "text-embedding-004")
 EMBED_MODEL = _EMBED_MODEL_RAW if _EMBED_MODEL_RAW.startswith(("models/", "tunedModels/")) else f"models/{_EMBED_MODEL_RAW}"
 EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
 
+# Log configuration at module load
+print(f"[EMBED CONFIG] Provider: {PROVIDER}")
+print(f"[EMBED CONFIG] Model: {EMBED_MODEL}")
+print(f"[EMBED CONFIG] Dimension: {EMBED_DIM}")
+
 _sbert = None
 _gem = None
 
@@ -19,13 +24,20 @@ _gem = None
 def _ensure_sbert():
     global _sbert
     if _sbert is None:
+        print("[EMBED] Loading local embedding model (first time may take 30-60s to download)...")
         from sentence_transformers import SentenceTransformer
-        _sbert = SentenceTransformer(os.getenv("SBERT_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
+        model_name = os.getenv("SBERT_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        print(f"[EMBED] Model: {model_name}")
+        _sbert = SentenceTransformer(model_name)
+        print("[EMBED] Local embedding model loaded successfully!")
     return _sbert
 
 def _ensure_gemini():
     global _gem
     if _gem is None:
+        import time
+        start = time.time()
+        print("[EMBED] Initializing Gemini SDK (first time only)...")
         import google.generativeai as genai
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -36,6 +48,8 @@ def _ensure_gemini():
         try:
             genai.configure(api_key=api_key)
             _gem = genai
+            elapsed = time.time() - start
+            print(f"[EMBED] Gemini SDK initialized in {elapsed:.2f}s")
         except Exception as e:
             raise RuntimeError(f"Failed to configure Gemini API: {e}")
     return _gem
@@ -78,16 +92,37 @@ def _coerce_1d_vector(v: Any, dim: int) -> List[float]:
 def _extract_vectors_gemini_response(res: Any) -> List[List[float]]:
     """
     Normalize google-generativeai return shapes into list[list[float]]:
-      - {'embeddings':[{'values':[...]}]}
-      - {'embedding': {'values':[...]} }
+      - {'embeddings':[{'values':[...]}]}  (batch response)
+      - {'embedding': {'values':[...]} }    (single response)
       - [{'embedding':{'values':[...]}}, ...] or [{'values':[...]} , ...] or [[...], ...]
       - object with .embedding(.values)
+      - object with ['embedding'] attribute that has list of embeddings
     """
     out: List[List[float]] = []
 
     def _add(item: Any):
         out.append(_coerce_1d_vector(item, EMBED_DIM))
 
+    # Check if result has an 'embedding' attribute (genai SDK response object)
+    if hasattr(res, 'embedding'):
+        embedding_attr = getattr(res, 'embedding', None)
+        # If embedding is a list of embeddings (batch response)
+        if isinstance(embedding_attr, list):
+            for emb in embedding_attr:
+                if hasattr(emb, 'values'):
+                    _add(emb.values)
+                else:
+                    _add(emb)
+            return out
+        # Single embedding with values
+        elif hasattr(embedding_attr, 'values'):
+            _add(embedding_attr.values)
+            return out
+        else:
+            _add(embedding_attr)
+            return out
+
+    # Dictionary responses
     if isinstance(res, dict):
         embs = res.get("embeddings")
         if isinstance(embs, list):
@@ -106,11 +141,6 @@ def _extract_vectors_gemini_response(res: Any) -> List[List[float]]:
                 _add(item["embedding"])
             else:
                 _add(item)
-    else:
-        emb = getattr(res, "embedding", None)
-        if emb is not None:
-            val = getattr(emb, "values", emb)
-            _add(val)
 
     return out
 
@@ -121,28 +151,58 @@ def embed_texts(texts: List[str]) -> np.ndarray:
     Return (N, EMBED_DIM) L2-normalized vectors, robust to SDK shape quirks.
     Ensures one vector per input string.
     """
+    import time
     texts = [t.strip() for t in texts if (t or "").strip()]
     if not texts:
         return _to_float32(np.zeros((0, EMBED_DIM)))
 
+    print(f"[EMBED] Using provider: {PROVIDER}")
+
     if PROVIDER == "gemini":
+        start_time = time.time()
         genai = _ensure_gemini()
         vecs: List[List[float]] = []
 
-        # Process texts individually (google-generativeai doesn't support batch embedding)
-        BATCH = 20
-        num_batches = (len(texts) + BATCH - 1) // BATCH
-        for batch_idx, i in enumerate(range(0, len(texts), BATCH), 1):
-            batch = texts[i:i + BATCH]
-            print(f"[EMBED] Processing batch {batch_idx}/{num_batches} ({len(batch)} texts)...")
+        # Use concurrent requests for speed
+        import concurrent.futures
 
-            for t in batch:
+        def embed_single(text: str, idx: int) -> tuple[int, List[float]]:
+            """Embed a single text and return (index, vector) for ordering."""
+            try:
                 r = genai.embed_content(
                     model=EMBED_MODEL,
-                    content=t,
+                    content=text,
                     task_type="retrieval_document",
                 )
-                vecs.extend(_extract_vectors_gemini_response(r))
+                individual_vecs = _extract_vectors_gemini_response(r)
+                if individual_vecs:
+                    return (idx, individual_vecs[0])
+                else:
+                    return (idx, [0.0] * EMBED_DIM)
+            except Exception as e:
+                print(f"[EMBED] Failed to embed text {idx} (len={len(text)}): {e}")
+                return (idx, [0.0] * EMBED_DIM)
+
+        # Process with ThreadPoolExecutor for I/O-bound API calls
+        # Use up to 10 concurrent workers for speed
+        max_workers = min(10, len(texts))
+        print(f"[EMBED] Embedding {len(texts)} texts with {max_workers} concurrent workers...")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all embedding tasks
+            futures = [executor.submit(embed_single, text, idx) for idx, text in enumerate(texts)]
+
+            # Collect results as they complete
+            results = []
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+
+        # Sort by original index to maintain order
+        results.sort(key=lambda x: x[0])
+        vecs = [vec for _, vec in results]
+
+        elapsed = time.time() - start_time
+        print(f"[EMBED] Embedded {len(texts)} texts in {elapsed:.2f}s ({len(texts)/elapsed:.1f} texts/sec)")
 
         arr = np.asarray(vecs, dtype="float32")
 

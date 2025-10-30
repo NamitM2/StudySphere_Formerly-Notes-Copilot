@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(git push:*)",
+      "Bash(xargs:*)",
+      "Read(//c/Users/namit/Documents/**)",
+      "Bash(python:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(pip install:*)",
+      "Bash(cat:*)",
+      "Bash(timeout:*)",
+      "Bash(GIT_SEQUENCE_EDITOR='sed -i \"\"s/^pick/edit/g\"\"' git rebase -i beb8c23~1)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

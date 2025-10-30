@@ -47,7 +47,7 @@ Notes Copilot is a full-stack web application built with modern technologies and
 3. Similarity threshold filtering: Uses 0.80 similarity threshold (max cosine distance of 0.40) to filter relevant chunks
 4. Maximal Marginal Relevance (MMR): Reduces redundancy by selecting diverse, relevant chunks
 5. Lexical scoring: Combines semantic similarity with keyword overlap for improved ranking
-6. Answer synthesis: Google Gemini 2.0 Flash Experimental generates answers from retrieved context
+6. Answer synthesis: Google Gemini 2.5 Flash generates answers from retrieved context
 7. Mode detection: Automatically tags answers as "From Notes", "Model Knowledge", or "Mixed" based on content analysis
 8. Citation extraction: Identifies which documents contributed to the answer with source filenames
 
@@ -64,6 +64,6 @@ Notes Copilot is a full-stack web application built with modern technologies and
 - JavaScript: React 18, Vite, Tailwind CSS
 - Database: PostgreSQL with pgvector extension
 - Authentication: Supabase Auth with JWT tokens
-- AI/ML: Google Gemini 2.0 Flash Experimental for answer generation, text-embedding-004 for semantic search (768-dim)
+- AI/ML: Google Gemini 2.5 Flash for answer generation, text-embedding-004 for semantic search (768-dim)
 
 ## Feel free to use in any way you would like to :)
