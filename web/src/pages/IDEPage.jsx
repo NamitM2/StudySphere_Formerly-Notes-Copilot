@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { loadToken, getAuthHeader } from '../lib/auth';
+import LoadingLogo from '../components/LoadingLogo';
 
 function IDEPage() {
   const [projects, setProjects] = useState([]);
@@ -22,15 +23,23 @@ function IDEPage() {
   const [newFolderName, setNewFolderName] = useState('');
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [expandedReasons, setExpandedReasons] = useState(new Set());
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
+  const [lastSuggestionTime, setLastSuggestionTime] = useState(0);
+  const [suggestionCooldown, setSuggestionCooldown] = useState(0);
 
   useEffect(() => {
     loadProjects();
   }, []);
 
   const loadProjects = async () => {
+    setLoadingProjects(true);
     try {
       const token = loadToken();
-      if (!token) return;
+      if (!token) {
+        setLoadingProjects(false);
+        return;
+      }
 
       const response = await fetch('http://localhost:8000/api/ide/projects', {
         headers: getAuthHeader()
@@ -42,6 +51,35 @@ function IDEPage() {
       }
     } catch (error) {
       console.error('Failed to load projects:', error);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const deleteProject = async (projectId, e) => {
+    e.stopPropagation(); // Prevent opening the project when clicking delete
+    if (!confirm('Delete this assignment? This action cannot be undone.')) return;
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/ide/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: getAuthHeader()
+      });
+
+      if (response.ok) {
+        setProjects(prev => prev.filter(p => p.id !== projectId));
+        // If deleted project was currently open, close it
+        if (currentProject?.id === projectId) {
+          setCurrentProject(null);
+          setContent('');
+        }
+        alert('Assignment deleted successfully');
+      } else {
+        alert('Failed to delete assignment');
+      }
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      alert('Failed to delete assignment');
     }
   };
 
@@ -88,11 +126,6 @@ function IDEPage() {
         setAssignmentPrompt('');
         setProjectTitle('');
         setTemplateFile(null);
-
-        // Trigger suggestions if we have content
-        if (initialContent && initialContent.length >= 50) {
-          setTimeout(() => refreshContentSuggestions(), 2000);
-        }
       } else {
         const error = await response.json();
         alert(`Failed to create project: ${error.detail}`);
@@ -127,10 +160,6 @@ function IDEPage() {
         const project = await response.json();
         setCurrentProject(project);
         setContent(project.current_content || '');
-        // Trigger suggestions if content exists
-        if (project.current_content && project.current_content.length >= 50) {
-          setTimeout(() => refreshContentSuggestions(), 1000);
-        }
       }
     } catch (error) {
       console.error('Failed to open project:', error);
@@ -290,19 +319,38 @@ function IDEPage() {
     return () => clearTimeout(saveTimer);
   }, [content, currentProject]);
 
-  // Auto-refresh content improvement suggestions as user types
+  // Update cooldown timer
   useEffect(() => {
-    if (!currentProject || !content || content.length < 50) return;
-
-    const timer = setTimeout(() => {
-      refreshContentSuggestions();
-    }, 3000); // Wait 3s after user stops typing
-
-    return () => clearTimeout(timer);
-  }, [content, currentProject]);
+    if (suggestionCooldown > 0) {
+      const timer = setTimeout(() => {
+        setSuggestionCooldown(suggestionCooldown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [suggestionCooldown]);
 
   const refreshContentSuggestions = async () => {
     if (!currentProject) return;
+
+    // Check rate limiting (2 requests per minute = 30 seconds cooldown)
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastSuggestionTime;
+    const cooldownMs = 30000; // 30 seconds
+
+    if (timeSinceLastRequest < cooldownMs) {
+      const remainingSeconds = Math.ceil((cooldownMs - timeSinceLastRequest) / 1000);
+      alert(`Please wait ${remainingSeconds} seconds before requesting suggestions again.`);
+      return;
+    }
+
+    if (content.length < 50) {
+      alert('Please write at least 50 characters before requesting suggestions.');
+      return;
+    }
+
+    setIsGeneratingSuggestions(true);
+    setLastSuggestionTime(now);
+    setSuggestionCooldown(30);
 
     try {
       const token = loadToken();
@@ -327,32 +375,21 @@ function IDEPage() {
       }
     } catch (error) {
       console.error('Failed to refresh content suggestions:', error);
+    } finally {
+      setIsGeneratingSuggestions(false);
     }
   };
 
   const acceptSuggestion = (suggestion) => {
     // Replace the original text with the improved version
     setContent(content.replace(suggestion.original, suggestion.improved));
-    // Remove this suggestion from the list - the next one will automatically appear
-    setContentSuggestions(prev => {
-      const filtered = prev.filter(s => s.original !== suggestion.original);
-      // If we're running low on suggestions (less than 3 remaining), trigger a refresh
-      if (filtered.length < 3 && content.length >= 50) {
-        setTimeout(() => refreshContentSuggestions(), 500);
-      }
-      return filtered;
-    });
+    // Remove this suggestion from the list
+    setContentSuggestions(prev => prev.filter(s => s.original !== suggestion.original));
   };
 
   const rejectSuggestion = (suggestion) => {
-    setContentSuggestions(prev => {
-      const filtered = prev.filter(s => s.original !== suggestion.original);
-      // If we're running low on suggestions, trigger a refresh
-      if (filtered.length < 3 && content.length >= 50) {
-        setTimeout(() => refreshContentSuggestions(), 500);
-      }
-      return filtered;
-    });
+    // Remove this suggestion from the list
+    setContentSuggestions(prev => prev.filter(s => s.original !== suggestion.original));
   };
 
   const applyChatContent = (suggestionText) => {
@@ -387,12 +424,12 @@ function IDEPage() {
 
       if (response.ok) {
         const result = await response.json();
-        setChatMessages(prev => [...prev, { role: 'assistant', content: result.response, action: result.action }]);
-
-        // If AI generated content, optionally auto-apply it
-        if (result.action === 'insert' && result.generated_text) {
-          applyChatContent(result.generated_text);
-        }
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: result.response,
+          action: result.action,
+          generated_text: result.generated_text
+        }]);
       }
     } catch (error) {
       console.error('Failed to send chat message:', error);
@@ -405,25 +442,25 @@ function IDEPage() {
   return (
     <div className="min-h-screen bg-black">
       {/* Header */}
-      <div className="bg-black border-b border-teal-950/50 px-6 py-4">
+      <div className="bg-black border-b border-rose-950/50 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => window.location.href = '/'}
-              className="text-zinc-400 hover:text-teal-400 transition-colors"
-              title="Back to Notes Copilot"
+              className="text-zinc-400 hover:text-pink-400 transition-colors"
+              title="Back to StudySphere"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-teal-500 to-rose-500 bg-clip-text text-transparent">
-              Assignment IDE
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-amber-400 to-pink-400 bg-clip-text text-transparent">
+              Assignments
             </h1>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white px-4 py-2 rounded-lg hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 transition-all shadow-lg shadow-rose-600/25"
+            className="bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 text-white px-4 py-2 rounded-lg hover:from-orange-400 hover:via-amber-400 hover:to-yellow-400 transition-all shadow-lg shadow-rose-600/25"
           >
             + New Assignment
           </button>
@@ -432,15 +469,15 @@ function IDEPage() {
 
       <div className="flex h-[calc(100vh-73px)]">
         {/* Sidebar - Assignments List */}
-        <div className="w-64 bg-zinc-950 border-r border-teal-950/40 overflow-y-auto">
+        <div className="w-64 bg-zinc-950 border-r border-rose-950/40 overflow-y-auto">
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
+              <h2 className="text-sm font-semibold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">
                 Your Assignments
               </h2>
               <button
                 onClick={() => setShowCreateFolderModal(true)}
-                className="text-zinc-400 hover:text-teal-400 transition-colors"
+                className="text-zinc-400 hover:text-pink-400 transition-colors"
                 title="Create folder"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -449,8 +486,15 @@ function IDEPage() {
               </button>
             </div>
 
-            {projects.length === 0 && folders.length === 0 ? (
-              <p className="text-sm text-zinc-500">No assignments yet</p>
+            {loadingProjects ? (
+              <div className="flex items-center justify-center py-12">
+                <LoadingLogo size="md" />
+              </div>
+            ) : projects.length === 0 && folders.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-zinc-500 mb-2">No assignments yet.</p>
+                <p className="text-xs text-zinc-600">Try creating one to get started!</p>
+              </div>
             ) : (
               <div className="space-y-1">
                 {/* Folders */}
@@ -475,7 +519,7 @@ function IDEPage() {
                         <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
                         </svg>
-                        <svg className="w-4 h-4 text-teal-400" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-4 h-4 text-pink-400" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                         </svg>
                         <span className="text-sm font-medium">{folder.name}</span>
@@ -485,22 +529,32 @@ function IDEPage() {
                       {isExpanded && (
                         <div className="ml-6 mt-1 space-y-1">
                           {folderProjects.map(project => (
-                            <button
+                            <div
                               key={project.id}
-                              onClick={() => openProject(project.id)}
-                              className={`w-full text-left p-2 rounded-lg border transition-all ${
-                                currentProject?.id === project.id
-                                  ? 'bg-teal-950/60 border-teal-700/50'
-                                  : 'bg-zinc-900/30 border-zinc-800/50 hover:bg-zinc-900/50 hover:border-teal-900/40'
-                              }`}
+                              className="group relative"
                             >
-                              <div className="font-medium text-sm text-zinc-200 truncate">
-                                {project.title}
-                              </div>
-                              <div className="text-xs text-zinc-500 mt-1">
-                                {project.assignment_type} • {project.progress_percentage}%
-                              </div>
-                            </button>
+                              <button
+                                onClick={() => openProject(project.id)}
+                                className={`w-full text-left p-2 rounded-lg border transition-all ${
+                                  currentProject?.id === project.id
+                                    ? 'bg-rose-950/60 border-amber-700/50'
+                                    : 'bg-zinc-900/30 border-zinc-800/50 hover:bg-zinc-900/50 hover:border-amber-900/40'
+                                }`}
+                              >
+                                <div className="font-medium text-sm text-zinc-200 truncate pr-16">
+                                  {project.title}
+                                </div>
+                                <div className="text-xs text-zinc-500 mt-1">
+                                  {project.assignment_type}
+                                </div>
+                              </button>
+                              <button
+                                onClick={(e) => deleteProject(project.id, e)}
+                                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded bg-red-950/50 text-red-400 border border-red-800/30 hover:bg-red-900/50 transition-all duration-200"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -510,22 +564,32 @@ function IDEPage() {
 
                 {/* Assignments without folders */}
                 {projects.filter(p => !p.folder_id).map(project => (
-                  <button
+                  <div
                     key={project.id}
-                    onClick={() => openProject(project.id)}
-                    className={`w-full text-left p-3 rounded-lg border transition-all ${
-                      currentProject?.id === project.id
-                        ? 'bg-teal-950/60 border-teal-700/50'
-                        : 'bg-zinc-900/50 border-zinc-800 hover:bg-zinc-900 hover:border-teal-900/40'
-                    }`}
+                    className="group relative"
                   >
-                    <div className="font-medium text-sm text-zinc-200 truncate">
-                      {project.title}
-                    </div>
-                    <div className="text-xs text-zinc-500 mt-1">
-                      {project.assignment_type} • {project.progress_percentage}%
-                    </div>
-                  </button>
+                    <button
+                      onClick={() => openProject(project.id)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all ${
+                        currentProject?.id === project.id
+                          ? 'bg-rose-950/60 border-amber-700/50'
+                          : 'bg-zinc-900/50 border-zinc-800 hover:bg-zinc-900 hover:border-amber-900/40'
+                      }`}
+                    >
+                      <div className="font-medium text-sm text-zinc-200 truncate pr-16">
+                        {project.title}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">
+                        {project.assignment_type}
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => deleteProject(project.id, e)}
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded bg-red-950/50 text-red-400 border border-red-800/30 hover:bg-red-900/50 transition-all duration-200"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -537,8 +601,8 @@ function IDEPage() {
           {currentProject ? (
             <>
               {/* Editor */}
-              <div className="flex-1 flex flex-col bg-zinc-950 border-r border-teal-950/40">
-                <div className="bg-zinc-900 border-b border-teal-950/40 px-4 py-2 flex items-center justify-between">
+              <div className="flex-1 flex flex-col bg-zinc-950 border-r border-rose-950/40">
+                <div className="bg-zinc-900 border-b border-rose-950/40 px-4 py-2 flex items-center justify-between">
                   <div>
                     <h2 className="font-semibold text-zinc-100">{currentProject.title}</h2>
                     <p className="text-xs text-zinc-500">
@@ -549,7 +613,7 @@ function IDEPage() {
                     <div className="flex items-center gap-1.5 text-xs">
                       {saveStatus === 'saved' && (
                         <>
-                          <svg className="w-4 h-4 text-teal-500" fill="currentColor" viewBox="0 0 20 20">
+                          <svg className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                           </svg>
                           <span className="text-zinc-400">Saved</span>
@@ -557,7 +621,7 @@ function IDEPage() {
                       )}
                       {saveStatus === 'saving' && (
                         <>
-                          <svg className="w-4 h-4 text-teal-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 text-amber-400 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
@@ -584,17 +648,40 @@ function IDEPage() {
                 />
               </div>
 
-              {/* Right Sidebar - AI Panels */}
+              {/* Right Sidebar - Sphere Panels */}
               <div className="w-96 flex flex-col bg-zinc-950">
                 {/* Content Improvement Suggestions Panel */}
-                <div className="h-1/2 flex flex-col border-b border-teal-950/40">
-                  <div className="p-3 border-b border-teal-900/50 bg-gradient-to-r from-teal-600 to-emerald-600 text-white">
-                    <h3 className="font-semibold text-sm">Content Improvements</h3>
-                    <p className="text-xs opacity-90">
-                      {contentSuggestions.length > 0
-                        ? `Showing ${Math.min(5, contentSuggestions.length)} of ${contentSuggestions.length} suggestion${contentSuggestions.length !== 1 ? 's' : ''}`
-                        : 'Analyzing your writing...'}
-                    </p>
+                <div className="h-1/2 flex flex-col border-b border-rose-950/40">
+                  <div className="p-3 border-b border-amber-900/50 bg-gradient-to-r from-orange-500 to-amber-500 text-white">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-sm">Content Improvements</h3>
+                        <p className="text-xs opacity-90">
+                          {contentSuggestions.length > 0
+                            ? `${contentSuggestions.length} suggestion${contentSuggestions.length !== 1 ? 's' : ''}`
+                            : 'Click button to get suggestions'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={refreshContentSuggestions}
+                        disabled={isGeneratingSuggestions || suggestionCooldown > 0}
+                        className="bg-white/20 hover:bg-white/30 disabled:bg-white/10 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium transition-all flex items-center gap-1.5"
+                        title={suggestionCooldown > 0 ? `Wait ${suggestionCooldown}s` : 'Generate suggestions'}
+                      >
+                        {isGeneratingSuggestions ? (
+                          <LoadingLogo size="xs" />
+                        ) : suggestionCooldown > 0 ? (
+                          <span>{suggestionCooldown}s</span>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Generate
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-zinc-900/50">
@@ -603,7 +690,7 @@ function IDEPage() {
                       const isReasonExpanded = expandedReasons.has(idx);
 
                       return (
-                        <div key={idx} className="bg-zinc-900 border border-teal-900/50 rounded-lg p-2.5">
+                        <div key={idx} className="bg-zinc-900 border border-amber-900/50 rounded-lg p-2.5">
                           <div className="mb-2">
                             <div className="text-xs text-zinc-500 mb-1">
                               <span className="line-through">"{suggestion.original.substring(0, 50)}{suggestion.original.length > 50 ? '...' : ''}"</span>
@@ -622,7 +709,7 @@ function IDEPage() {
                           <div className="flex gap-1.5">
                             <button
                               onClick={() => acceptSuggestion(suggestion)}
-                              className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-2 py-1 rounded text-xs font-medium hover:from-teal-500 hover:to-emerald-500 transition-all"
+                              className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-2 py-1 rounded text-xs font-medium hover:from-rose-400 hover:to-amber-400 transition-all"
                             >
                               Accept
                             </button>
@@ -661,18 +748,21 @@ function IDEPage() {
                       <svg className="w-12 h-12 mx-auto mb-3 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="text-sm">Start writing to see suggestions</p>
-                      <p className="text-xs mt-1">AI will analyze as you type</p>
+                      <p className="text-sm">No suggestions yet</p>
+                      <p className="text-xs mt-1">Write at least 50 characters, then click Generate</p>
                     </div>
                   )}
                 </div>
               </div>
 
-                {/* AI Chat Panel */}
+                {/* Chat Panel */}
                 <div className="h-1/2 flex flex-col">
-                  <div className="p-3 border-b border-rose-900/50 bg-gradient-to-r from-rose-600 to-purple-600 text-white">
-                    <h3 className="font-semibold text-sm">AI Chat Assistant</h3>
-                    <p className="text-xs opacity-90">Ask me anything</p>
+                  <div className="p-3 border-b border-amber-900/50 bg-gradient-to-r from-amber-500 to-pink-500 text-white flex items-center gap-2">
+                    <LoadingLogo size="sm" />
+                    <div>
+                      <h3 className="font-semibold text-sm">Chat Assistant</h3>
+                      <p className="text-xs opacity-90">Ask me anything</p>
+                    </div>
                   </div>
 
                   <>
@@ -706,17 +796,55 @@ function IDEPage() {
                           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                               msg.role === 'user'
-                                ? 'bg-gradient-to-r from-rose-600 to-purple-600 text-white'
+                                ? 'bg-gradient-to-r from-amber-500 to-pink-500 text-white'
                                 : 'bg-zinc-900 border border-zinc-800 text-zinc-100'
                             }`}>
                               <p className="whitespace-pre-wrap">{msg.content}</p>
-                              {msg.action === 'insert' && (
-                                <button
-                                  onClick={() => applyChatContent(msg.content)}
-                                  className="mt-2 text-xs bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-2 py-1 rounded hover:from-teal-500 hover:to-emerald-500"
-                                >
-                                  Insert into document
-                                </button>
+                              {msg.action === 'insert' && msg.generated_text && (
+                                <div className="mt-3 space-y-2">
+                                  <div className="text-xs text-zinc-400 font-semibold">Preview:</div>
+                                  <div className="bg-zinc-950/50 border border-amber-900/30 rounded p-2 text-xs max-h-32 overflow-y-auto">
+                                    <p className="whitespace-pre-wrap text-zinc-300">{msg.generated_text}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        applyChatContent(msg.generated_text);
+                                        // Mark as applied by removing the action
+                                        setChatMessages(prev => prev.map((m, i) =>
+                                          i === idx ? { ...m, action: 'applied' } : m
+                                        ));
+                                      }}
+                                      className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-3 py-1.5 rounded text-xs font-medium hover:from-rose-400 hover:to-amber-400 transition-all"
+                                    >
+                                      Accept & Insert
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        // Mark as declined by removing the action
+                                        setChatMessages(prev => prev.map((m, i) =>
+                                          i === idx ? { ...m, action: 'declined' } : m
+                                        ));
+                                      }}
+                                      className="flex-1 bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded text-xs font-medium hover:bg-zinc-700 transition-colors"
+                                    >
+                                      Decline
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                              {msg.action === 'applied' && (
+                                <div className="mt-2 text-xs text-pink-400 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                  </svg>
+                                  <span>Inserted into document</span>
+                                </div>
+                              )}
+                              {msg.action === 'declined' && (
+                                <div className="mt-2 text-xs text-zinc-500">
+                                  <span>Suggestion declined</span>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -725,31 +853,27 @@ function IDEPage() {
                       {isGenerating && (
                         <div className="flex justify-start">
                           <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-rose-500 rounded-full animate-bounce"></div>
-                              <div className="w-2 h-2 bg-rose-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                              <div className="w-2 h-2 bg-rose-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                            </div>
+                            <LoadingLogo size="sm" />
                           </div>
                         </div>
                       )}
                     </div>
 
-                    <div className="p-3 border-t border-rose-900/50 bg-zinc-950 rounded-b-lg">
+                    <div className="p-3 border-t border-amber-900/50 bg-zinc-950 rounded-b-lg">
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={chatInput}
                           onChange={(e) => setChatInput(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
-                          placeholder="Ask AI anything..."
-                          className="flex-1 text-sm bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                          placeholder="Ask Sphere anything..."
+                          className="flex-1 text-sm bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                           disabled={isGenerating}
                         />
                         <button
                           onClick={sendChatMessage}
                           disabled={!chatInput.trim() || isGenerating}
-                          className="bg-gradient-to-r from-rose-600 to-purple-600 text-white px-4 py-2 rounded hover:from-rose-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                          className="bg-gradient-to-r from-amber-500 to-pink-500 text-white px-4 py-2 rounded hover:from-pink-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -775,8 +899,8 @@ function IDEPage() {
       {/* Create Assignment Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-          <div className="bg-zinc-950 border border-teal-950/50 rounded-lg p-6 w-full max-w-2xl">
-            <h2 className="text-xl font-bold mb-4 bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
+          <div className="bg-zinc-950 border border-rose-950/50 rounded-lg p-6 w-full max-w-2xl">
+            <h2 className="text-xl font-bold mb-4 bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">
               Create New Assignment
             </h2>
 
@@ -789,7 +913,7 @@ function IDEPage() {
                   type="text"
                   value={projectTitle}
                   onChange={(e) => setProjectTitle(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                   placeholder="My Essay"
                 />
               </div>
@@ -801,7 +925,7 @@ function IDEPage() {
                 <textarea
                   value={assignmentPrompt}
                   onChange={(e) => setAssignmentPrompt(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 h-32 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 h-32 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                   placeholder="Paste your assignment prompt here. For example:&#10;&#10;Write a 5-paragraph essay about climate change..."
                   disabled={!!templateFile}
                 />
@@ -813,11 +937,11 @@ function IDEPage() {
                 <label className="block text-sm font-medium text-zinc-400 mb-1">
                   Upload Template/Homework File
                 </label>
-                <div className="border-2 border-dashed border-zinc-800 rounded-lg p-4 text-center hover:border-teal-900 transition-colors">
+                <div className="border-2 border-dashed border-zinc-800 rounded-lg p-4 text-center hover:border-amber-900 transition-colors">
                   {templateFile ? (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <svg className="w-8 h-8 text-teal-400" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-8 h-8 text-pink-400" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                         </svg>
                         <div className="text-left">
@@ -827,7 +951,7 @@ function IDEPage() {
                       </div>
                       <button
                         onClick={() => setTemplateFile(null)}
-                        className="text-rose-400 hover:text-rose-300"
+                        className="text-amber-400 hover:text-rose-300"
                       >
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -849,7 +973,7 @@ function IDEPage() {
                       />
                       <label
                         htmlFor="template-upload"
-                        className="inline-block px-4 py-2 bg-gradient-to-r from-teal-500 to-rose-500 text-white rounded-lg cursor-pointer hover:from-teal-400 hover:to-rose-400 text-sm transition-all"
+                        className="inline-block px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg cursor-pointer hover:from-rose-300 hover:to-amber-300 text-sm transition-all"
                       >
                         Choose File
                       </label>
@@ -857,7 +981,7 @@ function IDEPage() {
                   )}
                 </div>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Upload your homework, worksheet, or template to work on it directly with AI assistance
+                  Upload your homework, worksheet, or template to work on it directly with Sphere assistance
                 </p>
               </div>
             </div>
@@ -878,7 +1002,7 @@ function IDEPage() {
               <button
                 onClick={createProject}
                 disabled={loading || (!assignmentPrompt.trim() && !templateFile)}
-                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-rose-500 text-white rounded-lg hover:from-teal-400 hover:to-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg hover:from-rose-300 hover:to-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 {loading ? 'Creating...' : 'Create Assignment'}
               </button>
@@ -890,8 +1014,8 @@ function IDEPage() {
       {/* Create Folder Modal */}
       {showCreateFolderModal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-          <div className="bg-zinc-950 border border-teal-950/50 rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4 bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
+          <div className="bg-zinc-950 border border-rose-950/50 rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4 bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">
               Create New Folder
             </h2>
 
@@ -904,7 +1028,7 @@ function IDEPage() {
                   type="text"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                   placeholder="Math Homework"
                   autoFocus
                 />
@@ -934,7 +1058,7 @@ function IDEPage() {
                   setNewFolderName('');
                 }}
                 disabled={!newFolderName.trim()}
-                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-rose-500 text-white rounded-lg hover:from-teal-400 hover:to-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg hover:from-rose-300 hover:to-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 Create Folder
               </button>

@@ -1,0 +1,82 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Amber Ring -->
+    <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#fbbf24;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fcd34d;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Gradients for orbiting circles - All Same Pink -->
+    <linearGradient id="orb1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f472b6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f472b6;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="orb2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f472b6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f472b6;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="orb3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f472b6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f472b6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Dark background -->
+  <rect width="128" height="128" rx="24" fill="#0f172a"/>
+
+  <!-- Main circular ring -->
+  <circle cx="64" cy="64" r="38" fill="none" stroke="url(#ringGradient)" stroke-width="6" opacity="0.8"/>
+
+  <!-- Inner decorative ring -->
+  <circle cx="64" cy="64" r="32" fill="none" stroke="url(#ringGradient)" stroke-width="1.5" opacity="0.3"/>
+
+  <!-- Orbiting circles with random-looking animation - 5 pink dots -->
+  <g>
+    <!-- Circle 1: Fast clockwise (3.2s) -->
+    <circle r="9" fill="url(#orb1)" opacity="0.9">
+      <animateMotion
+        dur="3.2s"
+        repeatCount="indefinite"
+        path="M 102,64 A 38,38 0 1,1 102,63.9 Z"/>
+    </circle>
+
+    <!-- Circle 2: Slow counter-clockwise (4.8s) -->
+    <circle r="9" fill="url(#orb2)" opacity="0.9">
+      <animateMotion
+        dur="4.8s"
+        repeatCount="indefinite"
+        begin="-1.8s"
+        path="M 102,64 A 38,38 0 1,0 102,64.1 Z"/>
+    </circle>
+
+    <!-- Circle 3: Medium clockwise (4.1s) -->
+    <circle r="9" fill="url(#orb3)" opacity="0.9">
+      <animateMotion
+        dur="4.1s"
+        repeatCount="indefinite"
+        begin="-3.2s"
+        path="M 102,64 A 38,38 0 1,1 102,63.9 Z"/>
+    </circle>
+
+    <!-- Circle 4: Fast counter-clockwise (3.5s) -->
+    <circle r="9" fill="url(#orb1)" opacity="0.9">
+      <animateMotion
+        dur="3.5s"
+        repeatCount="indefinite"
+        begin="-0.7s"
+        path="M 102,64 A 38,38 0 1,0 102,64.1 Z"/>
+    </circle>
+
+    <!-- Circle 5: Medium-slow clockwise (4.6s) -->
+    <circle r="9" fill="url(#orb2)" opacity="0.9">
+      <animateMotion
+        dur="4.6s"
+        repeatCount="indefinite"
+        begin="-2.3s"
+        path="M 102,64 A 38,38 0 1,1 102,63.9 Z"/>
+    </circle>
+  </g>
+</svg>

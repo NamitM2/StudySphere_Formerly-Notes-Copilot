@@ -13,7 +13,7 @@ export default function Header({ manualToken, onManualTokenChange }) {
   return (
     <header className="border-b border-white/10 bg-neutral-900">
       <div className="mx-auto max-w-6xl px-4 py-4 flex items-center gap-4">
-        <Link to="/" className="text-xl font-bold">Notes Copilot</Link>
+        <Link to="/" className="text-xl font-bold">StudySphere</Link>
 
         <nav className="flex items-center gap-4 text-sm">
           {/* Library link removed */}
@@ -39,7 +39,7 @@ export default function Header({ manualToken, onManualTokenChange }) {
           )}
           {/* Dev helper: manual bearer box */}
           <input
-            className="w-72 rounded-lg bg-neutral-800 border border-white/10 px-3 py-2 text-sm placeholder:text-neutral-400 outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-72 rounded-lg bg-neutral-800 border border-white/10 px-3 py-2 text-sm placeholder:text-neutral-400 outline-none focus:ring-2 focus:ring-rose-500"
             placeholder="Bearer token (optional)"
             value={manualToken}
             onChange={(e) => onManualTokenChange(e.target.value)}

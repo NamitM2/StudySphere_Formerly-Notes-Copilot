@@ -5,6 +5,13 @@ const API_BASE = (
   "https://notes-copilot.onrender.com/api"
 ).replace(/\/$/, "");
 
+// Global 401 handler - will be set by App.jsx
+let onUnauthorized = null;
+
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+
 function joinURL(base, path) {
   const left = base.replace(/\/$/, "");
   const right = path.startsWith("/") ? path : `/${path}`;
@@ -17,20 +24,13 @@ async function parseJsonResponse(resp, url) {
 
   if (!resp.ok) {
 
-    // Check for token expiry (401 with specific message)
+    // Check for token expiry (401 - automatically sign out)
     if (resp.status === 401) {
-      try {
-        const errorData = JSON.parse(text);
-        if (errorData.detail && errorData.detail.includes("legacy token")) {
-          throw new Error("Login expired, please log in again");
-        }
-      } catch (e) {
-        // If JSON parsing fails or no specific message, still show friendly message for 401
-        if (e.message === "Login expired, please log in again") {
-          throw e;
-        }
-        throw new Error("Login expired, please log in again");
+      // Trigger automatic sign out
+      if (onUnauthorized) {
+        onUnauthorized();
       }
+      throw new Error("Your session has expired. Please sign in again.");
     }
 
     throw new Error(`HTTP ${resp.status} ${resp.statusText} from ${url}\n${text.slice(0, 400)}`);
@@ -81,6 +81,17 @@ export async function postFile(path, { file, fieldName = "file", extra = {} } = 
     credentials: "include",
   });
   resp.requestMethod = "POST";
+  return parseJsonResponse(resp, url);
+}
+
+export async function delJSON(path, headers = {}) {
+  const url = joinURL(API_BASE, path);
+  const resp = await fetch(url, {
+    method: "DELETE",
+    headers: { Accept: "application/json", ...headers },
+    credentials: "include",
+  });
+  resp.requestMethod = "DELETE";
   return parseJsonResponse(resp, url);
 }
 

@@ -1,21 +1,9 @@
 // web/src/App.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader, handleEmailVerification } from "./lib/auth";
-import { postFile, postJSON, getJSON } from "./lib/api";
+import { postFile, postJSON, getJSON, delJSON, setUnauthorizedHandler } from "./lib/api";
 import IDEPage from "./pages/IDEPage";
-
-// Only needed for DELETE helper
-const API_BASE = (
-  window.__API_BASE ||
-  import.meta.env.VITE_API_URL ||
-  "https://notes-copilot.onrender.com/api"
-).replace(/\/$/, "");
-
-async function delJSON(path, headers = {}) {
-  const r = await fetch(`${API_BASE}${path}`, { method: "DELETE", headers });
-  if (!r.ok) throw new Error(await r.text());
-  try { return await r.json(); } catch { return {}; }
-}
+import LoadingLogo from "./components/LoadingLogo";
 
 export default function App() {
   // ---- navigation state ----
@@ -63,12 +51,6 @@ export default function App() {
   // ---- toast notifications ----
   const [toast, setToast] = useState(null);
 
-  // ---- theme state ----
-  const [theme, setTheme] = useState(() => {
-    // Check localStorage or default to dark
-    return localStorage.getItem("theme") || "dark";
-  });
-
   const fileRef = useRef(null);
   const dropRef = useRef(null);
 
@@ -78,24 +60,22 @@ export default function App() {
     setTimeout(() => setToast(null), 4000); // Auto-dismiss after 4 seconds
   };
 
-  // Toggle theme
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-  };
-
-  // Apply theme to document
+  // Ensure dark mode is always active
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "light") {
-      root.classList.remove("dark");
-      root.classList.add("light");
-    } else {
-      root.classList.remove("light");
-      root.classList.add("dark");
-    }
-  }, [theme]);
+    document.documentElement.classList.add("dark");
+  }, []);
+
+  // Set up automatic sign-out on 401 errors
+  useEffect(() => {
+    const handleUnauthorized = async () => {
+      await signOut();
+      setToken("");
+      setUserEmail("");
+      showToast("Your session has expired. Please sign in again.", "error");
+    };
+
+    setUnauthorizedHandler(handleUnauthorized);
+  }, []);
 
   // ---------- docs ----------
   const refreshDocs = async () => {
@@ -273,7 +253,7 @@ export default function App() {
       return;
     }
 
-    setAsking(true); setAnswer(""); setHasSourceCitations(false); setPdfSources([]); setAnswerMode("notes_only"); setNotesPart(""); setEnrichmentPart("");
+    setAsking(true); setAnswer(""); setHasSourceCitations(false); setPdfSources([]); setAnswerMode("model_only"); setNotesPart(""); setEnrichmentPart("");
     try {
       const data = await postJSON("/ask", { q: question, k: 5, enrich: true, warm: true }, authedHeaders);
       setAnswer((data?.answer || "").trim());
@@ -281,7 +261,11 @@ export default function App() {
       const citations = data?.citations || [];
       setHasSourceCitations(citations.length > 0);
       setPdfSources(data?.pdf_sources || []);
-      setAnswerMode(data?.mode || "notes_only");
+      // Use backend mode if provided, otherwise infer from citations
+      const backendMode = data?.mode;
+      const inferredMode = citations.length > 0 ? "notes_only" : "model_only";
+      console.log("[DEBUG] Backend response:", { backendMode, citations: citations.length, inferredMode, answer: data?.answer?.substring(0, 100) });
+      setAnswerMode(backendMode || inferredMode);
       setNotesPart(data?.notes_part || "");
       setEnrichmentPart(data?.enrichment_part || "");
       // Refresh history after asking a question
@@ -316,15 +300,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-black">
       {/* Header */}
-      <header className="border-b border-teal-950/50 bg-black/90 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-rose-950/50 bg-black/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-7xl px-6 py-5">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-teal-600 to-rose-600 rounded-lg flex items-center justify-center shadow-lg shadow-rose-600/20">
-                <span className="text-white font-bold text-lg">N</span>
-              </div>
-              <div className="text-2xl font-bold bg-gradient-to-r from-teal-500 to-rose-500 bg-clip-text text-transparent">
-                Notes Copilot
+              <img src="/favicon.svg" alt="StudySphere" className="w-10 h-10" />
+              <div className="text-2xl font-bold bg-gradient-to-r from-amber-500 to-pink-400 bg-clip-text text-transparent">
+                StudySphere
               </div>
             </div>
 
@@ -334,7 +316,7 @@ export default function App() {
                 onClick={() => setCurrentPage("notes")}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                   currentPage === "notes"
-                    ? "bg-teal-700 text-white"
+                    ? "bg-rose-500 text-white"
                     : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
                 }`}
               >
@@ -344,11 +326,11 @@ export default function App() {
                 onClick={() => setCurrentPage("ide")}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                   currentPage === "ide"
-                    ? "bg-teal-700 text-white"
+                    ? "bg-rose-500 text-white"
                     : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
                 }`}
               >
-                Assignment IDE
+                Assignments
               </button>
             </div>
 
@@ -356,42 +338,15 @@ export default function App() {
             <div
               className={`ml-4 flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-300 ${
                 isSignedIn
-                  ? "bg-teal-950/60 text-teal-500 border border-teal-900/60"
+                  ? "bg-rose-950/60 text-rose-400 border border-rose-900/60"
                   : "bg-red-950/50 text-red-400 border border-red-800/50"
               }`}
             >
-              <div className={`w-2 h-2 rounded-full ${isSignedIn ? "bg-teal-500 animate-pulse" : "bg-red-400"}`} />
+              <div className={`w-2 h-2 rounded-full ${isSignedIn ? "bg-rose-400 animate-pulse" : "bg-red-400"}`} />
               {isSignedIn ? userEmail || "Connected" : "Not Connected"}
             </div>
 
             <div className="ml-auto" />
-
-            {/* Theme toggle button */}
-            <button
-              onClick={toggleTheme}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200"
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {theme === "dark" ? (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  <span className="text-sm font-medium bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
-                    Switch to light mode
-                  </span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                  </svg>
-                  <span className="text-sm font-medium bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">
-                    Switch to dark mode
-                  </span>
-                </>
-              )}
-            </button>
           </div>
         </div>
       </header>
@@ -404,7 +359,7 @@ export default function App() {
             {/* Auth Card */}
             <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Authentication</h3>
+                <h3 className="text-lg font-semibold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">Authentication</h3>
                 {isSignedIn && (
                   <button
                     onClick={doSignOut}
@@ -423,7 +378,7 @@ export default function App() {
                         key={m}
                         className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                           mode === m
-                            ? "bg-teal-700 text-black shadow-lg shadow-teal-600/25"
+                            ? "bg-rose-500 text-black shadow-lg shadow-rose-500/25"
                             : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:bg-zinc-800 hover:text-zinc-300"
                         }`}
                         onClick={() => setMode(m)}
@@ -434,13 +389,13 @@ export default function App() {
                   </div>
 
                   <input
-                    className="w-full px-4 py-3 mb-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-teal-700/50 focus:ring-2 focus:ring-teal-700/20 outline-none transition-all duration-200"
+                    className="w-full px-4 py-3 mb-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-amber-700/50 focus:ring-2 focus:ring-amber-700/20 outline-none transition-all duration-200"
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
                   <input
-                    className="w-full px-4 py-3 mb-4 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-teal-700/50 focus:ring-2 focus:ring-teal-700/20 outline-none transition-all duration-200"
+                    className="w-full px-4 py-3 mb-4 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-amber-700/50 focus:ring-2 focus:ring-amber-700/20 outline-none transition-all duration-200"
                     placeholder="Password"
                     type="password"
                     value={pwd}
@@ -448,7 +403,7 @@ export default function App() {
                   />
 
                   <button
-                    className="w-full py-3 rounded-lg font-medium transition-all duration-300 bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default shadow-lg shadow-rose-600/25 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98]"
+                    className="w-full py-3 rounded-lg font-medium transition-all duration-300 bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 text-white hover:from-rose-400 hover:via-amber-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-default shadow-lg shadow-rose-600/25 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98]"
                     disabled={authBusy || !email || !pwd}
                     onClick={mode === "signin" ? doSignIn : doSignUp}
                   >
@@ -457,7 +412,7 @@ export default function App() {
                 </>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-teal-500 font-medium">{userEmail}</div>
+                  <div className="text-rose-400 font-medium">{userEmail}</div>
                   {authError ? (
                     <div className="text-red-400 text-sm font-medium">{authError}</div>
                   ) : (
@@ -468,22 +423,22 @@ export default function App() {
             </section>
 
             {/* Library Card */}
-            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5">
+            <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Document Library</h3>
+                <h3 className="text-lg font-semibold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">Document Library</h3>
                 <div className="flex gap-2">
                   <button
-                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                    className="text-xs px-3 py-1.5 rounded-lg bg-rose-950/50 text-amber-400 border border-rose-800/30 hover:bg-rose-950/70 hover:border-amber-700/50 transition-all duration-200 disabled:opacity-50 flex items-center gap-2 min-h-[28px]"
                     onClick={refreshDocs}
                     disabled={loadingDocs || !isSignedIn}
                     title={!isSignedIn ? "Sign in to refresh" : "Refresh"}
                   >
-                    {loadingDocs ? "Loading..." : "Refresh"}
+                    {loadingDocs ? <LoadingLogo size="xs" /> : "Refresh"}
                   </button>
                   <button
                     onClick={() => setShowLibrary(!showLibrary)}
                     disabled={!isSignedIn}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                    className="text-xs px-3 py-1.5 rounded-lg bg-rose-950/50 text-amber-400 border border-rose-800/30 hover:bg-rose-950/70 hover:border-amber-700/50 transition-all duration-200 disabled:opacity-50"
                   >
                     {showLibrary ? "Hide" : "Show"}
                   </button>
@@ -502,7 +457,7 @@ export default function App() {
                     {docs.map((d) => (
                       <li
                         key={d.doc_id || d.id}
-                        className="group rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
+                        className="group rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 hover:bg-zinc-900 hover:border-rose-900/40 transition-all duration-200"
                       >
                         <div className="flex items-start gap-3">
                           <div className="flex-1 min-w-0">
@@ -529,17 +484,17 @@ export default function App() {
             </section>
 
             {/* Question History */}
-            <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5">
+            <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent">Question History</h3>
+                <h3 className="text-lg font-semibold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">Question History</h3>
                 <div className="flex gap-2">
                   <button
-                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                    className="text-xs px-3 py-1.5 rounded-lg bg-rose-950/50 text-amber-400 border border-rose-800/30 hover:bg-rose-950/70 hover:border-amber-700/50 transition-all duration-200 disabled:opacity-50 flex items-center gap-2 min-h-[28px]"
                     onClick={refreshHistory}
                     disabled={loadingHistory || !isSignedIn}
                     title={!isSignedIn ? "Sign in to view history" : "Refresh"}
                   >
-                    {loadingHistory ? "Loading..." : "Refresh"}
+                    {loadingHistory ? <LoadingLogo size="xs" /> : "Refresh"}
                   </button>
                   <button
                     onClick={() => {
@@ -550,7 +505,7 @@ export default function App() {
                       setShowHistory(!showHistory);
                     }}
                     disabled={!isSignedIn}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-teal-950/50 text-teal-400 border border-teal-800/30 hover:bg-teal-950/70 hover:border-teal-700/50 transition-all duration-200 disabled:opacity-50"
+                    className="text-xs px-3 py-1.5 rounded-lg bg-rose-950/50 text-amber-400 border border-rose-800/30 hover:bg-rose-950/70 hover:border-amber-700/50 transition-all duration-200 disabled:opacity-50"
                   >
                     {showHistory ? "Hide" : "Show"}
                   </button>
@@ -561,7 +516,9 @@ export default function App() {
                 <div className="text-zinc-500 text-sm">Sign in to view your question history</div>
               ) : showHistory ? (
                 loadingHistory ? (
-                  <div className="text-zinc-500 text-sm">Loading history...</div>
+                  <div className="flex items-center justify-center py-8">
+                    <LoadingLogo size="lg" />
+                  </div>
                 ) : history.length === 0 ? (
                   <div className="text-zinc-500 text-sm">No questions asked yet. Ask your first question above!</div>
                 ) : (
@@ -569,10 +526,10 @@ export default function App() {
                     {history.map((item) => (
                       <li
                         key={item.id}
-                        className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 hover:bg-zinc-900 hover:border-teal-900/40 transition-all duration-200"
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 hover:bg-zinc-900 hover:border-rose-900/40 transition-all duration-200"
                       >
                         <div className="flex items-start gap-2.5">
-                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gradient-to-br from-teal-600 to-rose-600 flex items-center justify-center">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
                             <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
                             </svg>
@@ -585,7 +542,7 @@ export default function App() {
                               {item.citations && item.citations.length > 0 && (
                                 <>
                                   <span>•</span>
-                                  <span className="text-teal-600">{item.citations.length} citation{item.citations.length !== 1 ? 's' : ''}</span>
+                                  <span className="text-rose-500">{item.citations.length} citation{item.citations.length !== 1 ? 's' : ''}</span>
                                 </>
                               )}
                             </div>
@@ -604,21 +561,21 @@ export default function App() {
           {/* Main Content */}
           <div className="space-y-6">
             {/* Hero */}
-            <section className="relative rounded-2xl bg-gradient-to-br from-teal-950/60 via-rose-950/50 to-rose-900/60 p-6 border border-teal-950/40">
+            <section className="relative rounded-2xl bg-gradient-to-br from-rose-950/60 via-pink-950/50 to-amber-900/60 p-6 border border-rose-950/40">
               <div className="relative">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-400 via-rose-400 to-rose-500 bg-clip-text text-transparent leading-relaxed">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent leading-relaxed">
                   Intelligent Document Analysis
                 </h1>
-                <p className="mt-2 text-base bg-gradient-to-r from-teal-400/80 via-rose-400/90 to-rose-500/90 bg-clip-text text-transparent">
-                  Upload your documents and unlock insights with AI-powered answers
+                <p className="mt-2 text-base bg-gradient-to-r from-rose-400/80 via-amber-400/90 to-amber-400/90 bg-clip-text text-transparent">
+                  Upload your documents and unlock insights with Sphere-powered answers
                 </p>
               </div>
             </section>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-end">
               {/* Upload Card */}
-              <section className="bg-zinc-950 border border-teal-950/40 rounded-2xl p-5">
-                <h2 className="text-xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-1.5">Upload Documents</h2>
+              <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-5">
+                <h2 className="text-xl font-bold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent mb-1.5">Upload Documents</h2>
                 <p className="text-sm text-zinc-500 mb-3.5">PDF, Markdown, or Text files (max 200MB)</p>
 
                 <div
@@ -628,17 +585,17 @@ export default function App() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   className={`relative border-2 border-dashed rounded-xl p-3 text-center transition-all duration-300 ${
-                    isDragging ? "border-teal-600 bg-teal-950/30" : "border-zinc-800 bg-zinc-900/30 hover:border-teal-900/60 hover:bg-zinc-900/50"
+                    isDragging ? "border-amber-600 bg-rose-950/30" : "border-zinc-800 bg-zinc-900/30 hover:border-rose-900/60 hover:bg-zinc-900/50"
                   } ${!isSignedIn ? "opacity-50 pointer-events-none" : ""}`}
                 >
                   {file ? (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                        <svg className="w-7 h-7 text-teal-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-7 h-7 text-rose-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                         </svg>
                         <div className="text-left flex-1 min-w-0">
-                          <p className="text-sm font-medium text-teal-400 truncate">{file.name}</p>
+                          <p className="text-sm font-medium text-amber-400 truncate">{file.name}</p>
                           <p className="text-xs text-zinc-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
                         </div>
                       </div>
@@ -664,7 +621,7 @@ export default function App() {
                       />
                       <button
                         onClick={() => fileRef.current?.click()}
-                        className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-teal-700 to-teal-600 text-white text-sm font-medium hover:from-teal-600 hover:to-teal-500 transition-all duration-300 shadow-lg shadow-teal-600/25 hover:scale-[1.05] active:scale-[0.95]"
+                        className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-medium hover:from-rose-400 hover:to-amber-400 transition-all duration-300 shadow-lg shadow-rose-500/25 hover:scale-[1.05] active:scale-[0.95]"
                         disabled={!isSignedIn}
                       >
                         Browse Files
@@ -676,16 +633,16 @@ export default function App() {
                 <button
                   onClick={handleUpload}
                   disabled={!file || uploading || !isSignedIn}
-                  className="mt-2.5 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98]"
+                  className="mt-2.5 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 text-white hover:from-rose-400 hover:via-amber-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 min-h-[42px]"
                 >
-                  {uploading ? "Uploading..." : "Upload File"}
+                  {uploading ? <LoadingLogo size="sm" /> : "Upload File"}
                 </button>
               </section>
 
               {/* Q&A Card */}
               <section className="bg-zinc-950 border border-rose-950/40 rounded-2xl p-5 h-fit">
-                <h2 className="text-xl font-bold bg-gradient-to-r from-teal-400 to-rose-400 bg-clip-text text-transparent mb-1.5">Ask Questions</h2>
-                <p className="text-sm text-zinc-500 mb-3.5">Get AI-powered insights from your documents</p>
+                <h2 className="text-xl font-bold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent mb-1.5">Ask Questions</h2>
+                <p className="text-sm text-zinc-500 mb-3.5">Get Sphere-powered insights from your documents</p>
 
                 <textarea
                   className="w-full h-20 px-3.5 py-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-rose-700/50 focus:ring-2 focus:ring-rose-700/20 outline-none transition-all duration-200 resize-none text-sm"
@@ -698,17 +655,9 @@ export default function App() {
                 <button
                   onClick={handleAsk}
                   disabled={asking || !question.trim() || !isSignedIn}
-                  className="mt-2.5 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-teal-700 via-teal-600 to-rose-700 text-white hover:from-teal-600 hover:via-rose-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98]"
+                  className="mt-2.5 w-full py-2.5 rounded-lg font-medium bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 text-white hover:from-rose-400 hover:via-amber-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-default transition-all duration-300 shadow-lg shadow-rose-600/20 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 min-h-[42px]"
                 >
-                  {asking ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Analyzing...
-                    </span>
-                  ) : "Get Answer"}
+                  {asking ? <LoadingLogo size="sm" /> : "Get Answer"}
                 </button>
               </section>
             </div>
@@ -717,29 +666,29 @@ export default function App() {
             {answer && (
               <div className={`rounded-2xl border p-5 ${
                 answerMode === "notes_only"
-                  ? "border-teal-900/40 bg-teal-950/30"
+                  ? "border-amber-900/40 bg-amber-950/30"
                   : answerMode === "model_only"
-                  ? "border-rose-900/40 bg-rose-950/30"
-                  : "border-teal-900/40 bg-gradient-to-br from-teal-950/30 via-purple-950/20 to-rose-950/30"
+                  ? "border-pink-900/40 bg-pink-950/30"
+                  : "border-orange-900/40 bg-gradient-to-br from-amber-950/30 via-orange-950/20 to-pink-950/30"
               }`}>
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                   {/* Mode tags */}
                   {answerMode === "notes_only" && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-teal-900/40 text-teal-400 border border-teal-700/50">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-900/40 text-amber-400 border border-amber-700/50">
                       From Notes
                     </span>
                   )}
                   {answerMode === "model_only" && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-rose-900/40 text-rose-400 border border-rose-700/50">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-pink-900/40 text-pink-400 border border-pink-700/50">
                       Model Knowledge
                     </span>
                   )}
                   {answerMode === "mixed" && (
                     <>
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-teal-900/40 text-teal-400 border border-teal-700/50">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-900/40 text-amber-400 border border-amber-700/50">
                         From Notes
                       </span>
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-rose-900/40 text-rose-400 border border-rose-700/50">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-pink-900/40 text-pink-400 border border-pink-700/50">
                         Model Knowledge
                       </span>
                     </>
@@ -765,10 +714,10 @@ export default function App() {
                 {/* Display answer - for mixed mode, show parts with visual separation */}
                 {answerMode === "mixed" && notesPart && enrichmentPart ? (
                   <div className="space-y-4">
-                    <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed p-3 rounded-lg bg-teal-950/20 border-l-2 border-teal-600/50">
+                    <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed">
                       {notesPart}
                     </div>
-                    <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed p-3 rounded-lg bg-rose-950/20 border-l-2 border-rose-600/50">
+                    <div className="text-zinc-300 whitespace-pre-wrap leading-relaxed">
                       {enrichmentPart}
                     </div>
                   </div>
@@ -790,7 +739,7 @@ export default function App() {
               ? "bg-red-950/90 border-red-800/50 text-red-200"
               : toast.type === "info"
               ? "bg-blue-950/90 border-blue-800/50 text-blue-200"
-              : "bg-teal-950/90 border-teal-800/50 text-teal-200"
+              : "bg-rose-950/90 border-rose-800/50 text-amber-200"
           }`}>
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 mt-0.5">

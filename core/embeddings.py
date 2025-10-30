@@ -192,10 +192,15 @@ def embed_texts(texts: List[str]) -> np.ndarray:
             # Submit all embedding tasks
             futures = [executor.submit(embed_single, text, idx) for idx, text in enumerate(texts)]
 
-            # Collect results as they complete
+            # Collect results as they complete with progress updates
             results = []
+            completed = 0
+            total = len(futures)
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
+                completed += 1
+                if completed % 10 == 0 or completed == total:
+                    print(f"[EMBED] Progress: {completed}/{total} chunks ({int(completed/total*100)}%)")
 
         # Sort by original index to maintain order
         results.sort(key=lambda x: x[0])
@@ -231,6 +236,32 @@ def embed_texts(texts: List[str]) -> np.ndarray:
         )
 
     return _l2_normalize(arr)
+
+
+def warmup_embeddings():
+    """
+    Pre-warm the embedding system by initializing the provider.
+    Call this at app startup to avoid first-request delays.
+    """
+    print("[EMBED] Warming up embedding system...")
+    if PROVIDER == "gemini":
+        # Initialize Gemini SDK
+        _ensure_gemini()
+        # Do a test embedding to fully warm up the API connection
+        try:
+            import time
+            start = time.time()
+            test_vec = embed_texts(["Warmup test"])
+            elapsed = time.time() - start
+            print(f"[EMBED] Warmup complete! Test embedding took {elapsed:.2f}s")
+            print(f"[EMBED] Subsequent uploads will be faster (no initialization delay)")
+        except Exception as e:
+            print(f"[EMBED] Warmup test failed (non-critical): {e}")
+    else:
+        # Initialize local model
+        _ensure_sbert()
+        print("[EMBED] Warmup complete! Local model ready.")
+    print("[EMBED] Ready for fast uploads!")
 
 def embed_query(text: str) -> np.ndarray:
     """1 text -> (1, EMBED_DIM) L2-normalized."""

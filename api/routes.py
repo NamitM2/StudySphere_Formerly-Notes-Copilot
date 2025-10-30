@@ -109,23 +109,28 @@ def _detect_answer_mode(answer: str, min_distance: float) -> str:
     """
     answer_lower = answer.lower() if isinstance(answer, str) else ""
 
-    # Check if answer explicitly says it's not in notes
+    # Check if answer has enrichment marker
+    has_enrichment = "<<<ENRICHMENT_START>>>" in answer
+
+    # Check if retrieved documents are actually relevant
+    # Stricter threshold: distance < 0.75 for high confidence relevance
+    # Note: Lower distance = more similar. Cosine distance range: 0.0 (identical) to 2.0 (opposite)
+    has_relevant_docs = min_distance < 0.75
+
+    # Check if answer explicitly says it's not in notes (fallback check)
     has_not_found_phrase = (
         ("couldn't find" in answer_lower or "could not find" in answer_lower or
          "can't find" in answer_lower or "cannot find" in answer_lower)
         and "notes" in answer_lower
     )
 
-    # Check if answer has enrichment marker
-    has_enrichment = "<<<ENRICHMENT_START>>>" in answer
+    # Check if this is a greeting or casual statement (not a real question)
+    is_greeting = any(greeting in answer_lower[:50] for greeting in [
+        "hello", "hi there", "hey there", "greetings", "how can i help", "what can i do"
+    ])
 
-    # Check if retrieved documents are actually relevant (distance < 0.85 = reasonably similar)
-    # Note: Lower distance = more similar. Cosine distance range: 0.0 (identical) to 2.0 (opposite)
-    # For document search, distances up to 0.85 are considered relevant
-    has_relevant_docs = min_distance < 0.85
-
-    # Determine mode
-    if has_not_found_phrase or not has_relevant_docs:
+    # Determine mode - prioritize distance-based detection
+    if not has_relevant_docs or has_not_found_phrase or is_greeting:
         return "model_only"
     elif has_enrichment:
         return "mixed"

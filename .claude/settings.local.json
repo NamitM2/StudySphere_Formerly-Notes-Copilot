@@ -1,4 +1,5 @@
 {
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
       "Bash(gh api:*)",
@@ -15,7 +16,10 @@
       "Bash(pip install:*)",
       "Bash(cat:*)",
       "Bash(timeout:*)",
-      "Bash(GIT_SEQUENCE_EDITOR='sed -i \"\"s/^pick/edit/g\"\"' git rebase -i beb8c23~1)"
+      "Bash(git restore:*)",
+      "Bash(git show:*)",
+      "Bash(git log:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

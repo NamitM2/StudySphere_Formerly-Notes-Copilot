@@ -16,7 +16,9 @@ ALLOWED_ORIGINS = [
 ]
 
 app = FastAPI(
-    title="Notes Copilot API",
+    title="StudySphere API",
+    description="Intelligent document analysis and learning platform with AI-powered Q&A, visual understanding, and assignment assistance",
+    version="1.0.0",
     docs_url="/api/swagger",
     redoc_url=None,
     openapi_url="/api/openapi.json",
@@ -54,11 +56,11 @@ async def startup_warmup():
     def _warmup():
         print("[STARTUP] Warming up Gemini SDK and embeddings...")
         try:
-            # Import and initialize embedding system
-            from core.embeddings import embed_query
-            # This will trigger _ensure_gemini() and import google.generativeai
-            # but won't make an API call (just configures the client)
-            print("[STARTUP] Embedding system ready!")
+            # Import and fully warm up embedding system with test API call
+            from core.embeddings import warmup_embeddings
+            # This will initialize Gemini SDK AND make a test API call
+            # to fully warm up the connection for fast first upload
+            warmup_embeddings()
         except Exception as e:
             print(f"[STARTUP] Warning: Failed to warm up embeddings: {e}")
 
