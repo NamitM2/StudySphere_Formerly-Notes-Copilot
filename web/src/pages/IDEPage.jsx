@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react';
 import { loadToken, getAuthHeader } from '../lib/auth';
 import LoadingLogo from '../components/LoadingLogo';
 
+// Use the same API base as the rest of the app
+const API_BASE = (
+  window.__API_BASE ||
+  import.meta.env.VITE_API_URL ||
+  "https://notes-copilot.onrender.com/api"
+).replace(/\/$/, "");
+
 function IDEPage() {
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null);
@@ -41,7 +48,7 @@ function IDEPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:8000/api/ide/projects', {
+      const response = await fetch(`${API_BASE}/ide/projects`, {
         headers: getAuthHeader()
       });
 
@@ -61,7 +68,7 @@ function IDEPage() {
     if (!confirm('Delete this assignment? This action cannot be undone.')) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/ide/projects/${projectId}`, {
+      const response = await fetch(`${API_BASE}/ide/projects/${projectId}`, {
         method: 'DELETE',
         headers: getAuthHeader()
       });
@@ -104,7 +111,7 @@ function IDEPage() {
         initialContent = await readFileContent(templateFile);
       }
 
-      const response = await fetch('http://localhost:8000/api/ide/projects/create', {
+      const response = await fetch(`${API_BASE}/ide/projects/create`, {
         method: 'POST',
         headers: {
           ...getAuthHeader(),
@@ -152,7 +159,7 @@ function IDEPage() {
       const token = loadToken();
       if (!token) return;
 
-      const response = await fetch(`http://localhost:8000/api/ide/projects/${projectId}`, {
+      const response = await fetch(`${API_BASE}/ide/projects/${projectId}`, {
         headers: getAuthHeader()
       });
 
@@ -173,7 +180,7 @@ function IDEPage() {
       const token = loadToken();
       if (!token) return;
 
-      const response = await fetch(`http://localhost:8000/api/ide/projects/${currentProject.id}/content`, {
+      const response = await fetch(`${API_BASE}/ide/projects/${currentProject.id}/content`, {
         method: 'PUT',
         headers: {
           ...getAuthHeader(),
@@ -202,7 +209,7 @@ function IDEPage() {
       const token = loadToken();
       if (!token) return;
 
-      const response = await fetch('http://localhost:8000/api/ide/suggest-next', {
+      const response = await fetch(`${API_BASE}/ide/suggest-next`, {
         method: 'POST',
         headers: {
           ...getAuthHeader(),
@@ -242,7 +249,7 @@ function IDEPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:8000/api/ide/generate', {
+      const response = await fetch(`${API_BASE}/ide/generate`, {
         method: 'POST',
         headers: {
           ...getAuthHeader(),
@@ -278,7 +285,7 @@ function IDEPage() {
       const token = loadToken();
       if (!token) return;
 
-      const response = await fetch('http://localhost:8000/api/ide/review', {
+      const response = await fetch(`${API_BASE}/ide/review`, {
         method: 'POST',
         headers: {
           ...getAuthHeader(),
@@ -356,7 +363,7 @@ function IDEPage() {
       const token = loadToken();
       if (!token) return;
 
-      const response = await fetch('http://localhost:8000/api/ide/improve-content', {
+      const response = await fetch(`${API_BASE}/ide/improve-content`, {
         method: 'POST',
         headers: {
           ...getAuthHeader(),
@@ -408,7 +415,7 @@ function IDEPage() {
       const token = loadToken();
       if (!token) return;
 
-      const response = await fetch('http://localhost:8000/api/ide/chat', {
+      const response = await fetch(`${API_BASE}/ide/chat`, {
         method: 'POST',
         headers: {
           ...getAuthHeader(),
