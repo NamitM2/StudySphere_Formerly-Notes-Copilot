@@ -6,6 +6,20 @@
   --ring: var(--color-violet-500);
   --brand: var(--color-violet-600);
   --brand-hover: var(--color-violet-500);
+
+  /* Toast animation */
+  --animate-slide-in-right: slide-in-right 0.3s ease-out;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 :root { color-scheme: dark; }

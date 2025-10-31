@@ -18,9 +18,11 @@ class IDEAssistant:
     def __init__(self):
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            raise ValueError("GOOGLE_API_KEY not set")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-2.5-flash")
+            print("[IDE_ASSISTANT] WARNING: GOOGLE_API_KEY not set - assistant will not function")
+            self.model = None
+        else:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel("gemini-2.5-flash")
 
     def autocomplete(
         self,
@@ -34,6 +36,9 @@ class IDEAssistant:
 
         Returns: Suggested completion text (not full text, just the completion)
         """
+
+        if not self.model:
+            return ""
 
         # Get text before and after cursor
         before_cursor = current_text[:cursor_position]

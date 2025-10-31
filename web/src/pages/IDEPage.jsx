@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { loadToken, getAuthHeader } from '../lib/auth';
 import LoadingLogo from '../components/LoadingLogo';
+import PDFWorksheet from '../components/PDFWorksheet';
+import { uploadWorksheet } from '../lib/api';
 
 // Use the same API base as the rest of the app
 const API_BASE = (
@@ -39,6 +41,10 @@ function IDEPage() {
   const [dontWarnDelete, setDontWarnDelete] = useState(() => {
     return localStorage.getItem('dontWarnDelete') === 'true';
   });
+  const [worksheetPdfUrl, setWorksheetPdfUrl] = useState(null);
+  const [isPdfWorksheet, setIsPdfWorksheet] = useState(false);
+  const [uploadedPdfFiles, setUploadedPdfFiles] = useState(new Map()); // projectId -> pdfUrl
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     loadProjects();
@@ -135,10 +141,21 @@ function IDEPage() {
       }
 
       let initialContent = '';
+      let pdfUrl = null;
+      let isPdf = false;
 
       // If template file provided, read it first
       if (templateFile) {
-        initialContent = await readFileContent(templateFile);
+        const fileData = await readFileContent(templateFile);
+        console.log('[IDE] File data:', fileData);
+        if (fileData.isPDF) {
+          isPdf = true;
+          pdfUrl = fileData.url;
+          initialContent = `[PDF Worksheet: ${templateFile.name}]`;
+          console.log('[IDE] PDF detected, URL:', pdfUrl);
+        } else {
+          initialContent = fileData.content;
+        }
       }
 
       const response = await fetch(`${API_BASE}/ide/projects/create`, {
@@ -150,7 +167,8 @@ function IDEPage() {
         body: JSON.stringify({
           assignment_prompt: assignmentPrompt || `Work on uploaded file: ${templateFile?.name}`,
           title: projectTitle || templateFile?.name || null,
-          initial_content: initialContent
+          initial_content: initialContent,
+          is_pdf_worksheet: isPdf
         })
       });
 
@@ -159,6 +177,42 @@ function IDEPage() {
         setProjects([project, ...projects]);
         setCurrentProject(project);
         setContent(initialContent || project.current_content || '');
+
+        // Auto-collapse sidebar when creating a new project
+        setIsSidebarCollapsed(true);
+
+        // Set PDF worksheet state and upload for field detection
+        if (isPdf && templateFile) {
+          setIsPdfWorksheet(true);
+          setWorksheetPdfUrl(pdfUrl);
+
+          // Upload PDF to backend for field detection
+          try {
+            console.log('[IDE] Uploading PDF worksheet for field detection...');
+            const worksheetData = await uploadWorksheet(project.id, templateFile);
+            console.log('[IDE] Worksheet uploaded successfully:', worksheetData);
+
+            // Update to use the permanent Supabase URL instead of blob URL
+            setWorksheetPdfUrl(worksheetData.pdf_url);
+            setUploadedPdfFiles(prev => {
+              const newMap = new Map(prev);
+              newMap.set(project.id, worksheetData.pdf_url);
+              return newMap;
+            });
+          } catch (error) {
+            console.error('[IDE] Failed to upload worksheet:', error);
+            // Fall back to blob URL for viewing
+            setUploadedPdfFiles(prev => {
+              const newMap = new Map(prev);
+              newMap.set(project.id, pdfUrl);
+              return newMap;
+            });
+          }
+        } else {
+          setIsPdfWorksheet(false);
+          setWorksheetPdfUrl(null);
+        }
+
         setShowCreateModal(false);
         setAssignmentPrompt('');
         setProjectTitle('');
@@ -177,10 +231,18 @@ function IDEPage() {
 
   const readFileContent = (file) => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsText(file);
+      // Check if PDF
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        // For PDFs, create a blob URL for direct rendering
+        const blobUrl = URL.createObjectURL(file);
+        resolve({ isPDF: true, url: blobUrl, file: file });
+      } else {
+        // For text files, read as text
+        const reader = new FileReader();
+        reader.onload = (e) => resolve({ isPDF: false, content: e.target.result });
+        reader.onerror = reject;
+        reader.readAsText(file);
+      }
     });
   };
 
@@ -197,6 +259,21 @@ function IDEPage() {
         const project = await response.json();
         setCurrentProject(project);
         setContent(project.current_content || '');
+
+        // Auto-collapse sidebar when opening a project
+        setIsSidebarCollapsed(true);
+
+        // Check if this project has a PDF worksheet
+        const storedPdfUrl = uploadedPdfFiles.get(projectId);
+        const isPdfProject = project.current_content?.startsWith('[PDF Worksheet:') || storedPdfUrl;
+
+        if (isPdfProject && storedPdfUrl) {
+          setIsPdfWorksheet(true);
+          setWorksheetPdfUrl(storedPdfUrl);
+        } else {
+          setIsPdfWorksheet(false);
+          setWorksheetPdfUrl(null);
+        }
       }
     } catch (error) {
       console.error('Failed to open project:', error);
@@ -571,7 +648,7 @@ function IDEPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="h-screen flex flex-col bg-black overflow-hidden">
       {/* Header */}
       <div className="bg-black border-b border-rose-950/50 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -598,9 +675,13 @@ function IDEPage() {
         </div>
       </div>
 
-      <div className="flex h-[calc(100vh-73px)]">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Sidebar - Assignments List */}
-        <div className="w-64 bg-zinc-950 border-r border-rose-950/40 overflow-y-auto">
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-64 bg-zinc-950 border-r border-rose-950/40 overflow-y-auto z-10 transition-transform duration-300 ease-in-out ${
+            isSidebarCollapsed ? '-translate-x-full' : 'translate-x-0'
+          }`}
+        >
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">
@@ -728,7 +809,26 @@ function IDEPage() {
         </div>
 
         {/* Main Editor Area */}
-        <div className="flex-1 flex">
+        <div className={`flex transition-all duration-300 ease-in-out relative ${
+          isSidebarCollapsed ? 'ml-0 w-full' : 'ml-64 w-[calc(100%-16rem)]'
+        }`}>
+          {/* Floating Toggle Button - Always visible */}
+          {currentProject && (
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="absolute top-16 left-4 z-20 p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-amber-400 transition-all border border-zinc-700 hover:border-amber-700/50 shadow-lg"
+              title={isSidebarCollapsed ? "Show assignments" : "Hide assignments"}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isSidebarCollapsed ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                )}
+              </svg>
+            </button>
+          )}
+
           {currentProject ? (
             <>
               {/* Editor */}
@@ -781,16 +881,34 @@ function IDEPage() {
                   </div>
                 </div>
 
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className="flex-1 p-6 font-mono text-sm resize-none focus:outline-none bg-black text-zinc-100 placeholder-zinc-600"
-                  placeholder="Start writing your assignment here..."
-                />
+                {/* Conditional rendering: PDF Worksheet or Text Editor */}
+                {(() => {
+                  console.log('[IDE Editor] isPdfWorksheet:', isPdfWorksheet, 'worksheetPdfUrl:', worksheetPdfUrl);
+                  return isPdfWorksheet && worksheetPdfUrl ? (
+                    <div className="flex-1 overflow-auto">
+                      <PDFWorksheet
+                        worksheetUrl={worksheetPdfUrl}
+                        projectId={currentProject.id}
+                        onFieldChange={(fieldId, value) => {
+                          // Auto-save field changes
+                          console.log(`Field ${fieldId} changed:`, value);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <textarea
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                      className="flex-1 p-6 font-mono text-sm resize-none focus:outline-none bg-black text-zinc-100 placeholder-zinc-600"
+                      placeholder="Start writing your assignment here..."
+                    />
+                  );
+                })()}
               </div>
 
-              {/* Right Sidebar - Sphere Panels */}
-              <div className="w-96 flex flex-col bg-zinc-950">
+              {/* Right Sidebar - Sphere Panels - Only show when sidebar is collapsed */}
+              {isSidebarCollapsed && (
+              <div className="w-96 flex-shrink-0 flex flex-col bg-zinc-950">
                 {/* Content Improvement Suggestions Panel */}
                 <div className="h-1/2 flex flex-col border-b border-rose-950/40">
                   <div className="p-3 border-b border-amber-900/50 bg-gradient-to-r from-orange-500 to-amber-500 text-white">
@@ -1025,6 +1143,7 @@ function IDEPage() {
                   </>
                 </div>
               </div>
+              )}
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-zinc-500 bg-black">

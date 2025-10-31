@@ -23,24 +23,6 @@ export default function LandingPage({ onSignIn, onSignUp }) {
     }
   };
 
-  const features = [
-    {
-      title: "Smart Notes Analysis",
-      description: "Upload your study materials and get instant, intelligent answers from your documents",
-      icon: "📚"
-    },
-    {
-      title: "Assignment Assistant",
-      description: "Breeze through assignments with AI-powered writing suggestions and real-time guidance",
-      icon: "✍️"
-    },
-    {
-      title: "Exam Preparation",
-      description: "Transform your notes into study guides and get personalized help preparing for exams",
-      icon: "🎯"
-    }
-  ];
-
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden relative">
       {/* Animated background gradient orbs */}
@@ -54,43 +36,24 @@ export default function LandingPage({ onSignIn, onSignUp }) {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left side - Hero content */}
           <div className="space-y-8 text-center lg:text-left">
-            {/* Logo */}
-            <div className="flex justify-center lg:justify-start">
-              <div className="animate-float">
-                <LoadingLogo size="lg" />
-              </div>
-            </div>
-
             {/* Main heading */}
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Logo - Bigger and placed at top */}
+              <div className="flex justify-center lg:justify-start">
+                <div className="animate-float scale-150">
+                  <LoadingLogo size="lg" />
+                </div>
+              </div>
+
               <h1 className="text-5xl md:text-6xl font-bold leading-tight">
                 <span className="bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent animate-gradient">
                   StudySphere
                 </span>
               </h1>
+
               <p className="text-2xl md:text-3xl text-zinc-300 font-semibold">
                 Breeze through assignments and prepare for exams, powered completely by AI
               </p>
-              <p className="text-lg text-zinc-500 max-w-xl mx-auto lg:mx-0">
-                Your intelligent study companion that understands your notes, guides your writing, and helps you excel academically.
-              </p>
-            </div>
-
-            {/* Features */}
-            <div className="grid gap-4 mt-8">
-              {features.map((feature, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-4 p-4 rounded-xl bg-zinc-950/50 border border-zinc-800/50 hover:border-amber-500/30 transition-all duration-300 hover:scale-105"
-                  style={{ animationDelay: `${idx * 0.1}s` }}
-                >
-                  <div className="text-3xl">{feature.icon}</div>
-                  <div className="text-left">
-                    <h3 className="font-semibold text-zinc-200 mb-1">{feature.title}</h3>
-                    <p className="text-sm text-zinc-500">{feature.description}</p>
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
 
@@ -139,7 +102,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                   <button
                     type="submit"
                     disabled={loading || !email || !password}
-                    className="w-full py-3 rounded-lg font-semibold text-white bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 hover:from-orange-600 hover:via-amber-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all duration-300 hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 min-h-[48px]"
+                    className="w-full py-3 rounded-lg font-semibold text-white bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 hover:from-orange-600 hover:via-amber-600 hover:to-pink-600 disabled:opacity-50 transition-all duration-300 hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <>
@@ -157,7 +120,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                   <button
                     onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
                     disabled={loading}
-                    className="text-sm text-zinc-500 hover:text-amber-400 transition-colors disabled:opacity-50 cursor-pointer"
+                    className="text-sm text-zinc-500 hover:text-amber-400 transition-colors disabled:opacity-50"
                   >
                     {mode === 'signin' ? (
                       <>
@@ -169,16 +132,6 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                       </>
                     )}
                   </button>
-                </div>
-              </div>
-
-              {/* Trust indicators */}
-              <div className="mt-6 text-center space-y-2">
-                <p className="text-xs text-zinc-600">Trusted by students worldwide</p>
-                <div className="flex justify-center gap-4 text-xs text-zinc-700">
-                  <span>🔒 Secure & Private</span>
-                  <span>⚡ Lightning Fast</span>
-                  <span>🎓 Academic Excellence</span>
                 </div>
               </div>
             </div>

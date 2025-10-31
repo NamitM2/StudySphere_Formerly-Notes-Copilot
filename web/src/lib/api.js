@@ -20,10 +20,15 @@ function joinURL(base, path) {
 
 async function parseJsonResponse(resp, url) {
   const ct = resp.headers.get("content-type") || "";
-  const text = await resp.text();
+  let text = "";
+
+  try {
+    text = await resp.text();
+  } catch (e) {
+    throw new Error(`Failed to read response from ${url}: ${e.message}`);
+  }
 
   if (!resp.ok) {
-
     // Check for token expiry (401 - automatically sign out)
     if (resp.status === 401) {
       // Trigger automatic sign out
@@ -35,13 +40,15 @@ async function parseJsonResponse(resp, url) {
 
     throw new Error(`HTTP ${resp.status} ${resp.statusText} from ${url}\n${text.slice(0, 400)}`);
   }
+
   if (!ct.includes("application/json")) {
     throw new Error(`Expected JSON but got '${ct}' from ${url}\n${text.slice(0, 200)}`);
   }
+
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new Error(`Invalid JSON from ${url}: ${e.message}`);
+    throw new Error(`Invalid JSON from ${url}: ${e.message}\nResponse: ${text.slice(0, 200)}`);
   }
 }
 
@@ -84,6 +91,18 @@ export async function postFile(path, { file, fieldName = "file", extra = {} } = 
   return parseJsonResponse(resp, url);
 }
 
+export async function putJSON(path, body, headers = {}) {
+  const url = joinURL(API_BASE, path);
+  const resp = await fetch(url, {
+    method: "PUT",
+    headers: { Accept: "application/json", "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body ?? {}),
+    credentials: "include",
+  });
+  resp.requestMethod = "PUT";
+  return parseJsonResponse(resp, url);
+}
+
 export async function delJSON(path, headers = {}) {
   const url = joinURL(API_BASE, path);
   const resp = await fetch(url, {
@@ -93,5 +112,55 @@ export async function delJSON(path, headers = {}) {
   });
   resp.requestMethod = "DELETE";
   return parseJsonResponse(resp, url);
+}
+
+// ==================== Worksheet API ====================
+
+/**
+ * Upload a PDF worksheet and detect fillable fields
+ * @param {string} projectId - Assignment project ID
+ * @param {File} pdfFile - PDF file to upload
+ * @returns {Promise<{project_id, pdf_url, fields, page_count}>}
+ */
+export async function uploadWorksheet(projectId, pdfFile) {
+  const url = joinURL(API_BASE, `/ide/worksheet/upload?project_id=${projectId}`);
+  const formData = new FormData();
+  formData.append('file', pdfFile, pdfFile.name);
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+
+  return parseJsonResponse(resp, url);
+}
+
+/**
+ * Get worksheet fields and saved answers
+ * @param {string} projectId - Assignment project ID
+ * @returns {Promise<{project_id, pdf_url, fields, answers}>}
+ */
+export async function getWorksheetFields(projectId) {
+  return getJSON(`/ide/worksheet/${projectId}/fields`);
+}
+
+/**
+ * Save worksheet field answers
+ * @param {string} projectId - Assignment project ID
+ * @param {Object} answers - Map of field_id -> answer
+ * @returns {Promise<{project_id, saved_count, timestamp}>}
+ */
+export async function saveWorksheetAnswers(projectId, answers) {
+  return putJSON(`/ide/worksheet/${projectId}/save`, answers);
+}
+
+/**
+ * Delete a worksheet
+ * @param {string} projectId - Assignment project ID
+ * @returns {Promise<{message}>}
+ */
+export async function deleteWorksheet(projectId) {
+  return delJSON(`/ide/worksheet/${projectId}`);
 }
 

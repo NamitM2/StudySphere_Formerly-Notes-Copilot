@@ -38,7 +38,26 @@ export async function signIn(email, password) {
     },
     body: JSON.stringify({ email, password }),
   });
-  if (!r.ok) throw new Error(await r.text());
+
+  if (!r.ok) {
+    const errorText = await r.text();
+    try {
+      const errorData = JSON.parse(errorText);
+      const errorMsg = errorData?.msg || errorData?.message || errorData?.error_description || errorData?.error;
+
+      // Provide user-friendly error message
+      if (errorMsg?.toLowerCase().includes('invalid')) {
+        throw new Error('Invalid email or password');
+      }
+      throw new Error(errorMsg || 'Sign in failed');
+    } catch (e) {
+      if (e.message === 'Invalid email or password' || e.message === 'Sign in failed') {
+        throw e;
+      }
+      throw new Error('Invalid email or password');
+    }
+  }
+
   const data = await r.json();
   return saveTokenData(data);
 }

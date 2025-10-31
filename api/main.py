@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router as api_router
 from api.routes_v2.ide_routes import router as ide_router
+from api.routes_v2.worksheet_routes import router as worksheet_router
 from core.background_worker import start_worker
 
 # Get frontend origin from environment variable
@@ -40,6 +41,9 @@ app.include_router(api_router, prefix="/api")
 
 # NEW: Assignment IDE routes
 app.include_router(ide_router, prefix="/api")
+
+# NEW: Worksheet routes
+app.include_router(worksheet_router, prefix="/api")
 
 # Start background worker for async document processing
 start_worker()

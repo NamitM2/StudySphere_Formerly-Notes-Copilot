@@ -30,9 +30,11 @@ DEFAULT_STUDENT_NAME = os.getenv("STUDENT_NAME", "Student")
 # Validate configuration
 if not API_KEYS:
     import sys
-    print("ERROR: No API keys found in environment variables.", file=sys.stderr)
+    print("WARNING: No API keys found in environment variables.", file=sys.stderr)
     print("Set GOOGLE_API_KEY or GOOGLE_API_KEY_1, GOOGLE_API_KEY_2, etc.", file=sys.stderr)
-    sys.exit(1)
+    print("Server will start but Q&A features will not work until API key is configured.", file=sys.stderr)
+    # Don't exit - allow server to start for other features
+    # sys.exit(1)
 
 # Track which key is currently active
 _current_key_index = 0

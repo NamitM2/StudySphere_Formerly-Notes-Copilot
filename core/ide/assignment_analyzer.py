@@ -18,9 +18,11 @@ class AssignmentAnalyzer:
     def __init__(self):
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            raise ValueError("GOOGLE_API_KEY not set")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            print("[ASSIGNMENT_ANALYZER] WARNING: GOOGLE_API_KEY not set - analyzer will not function")
+            self.model = None
+        else:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
 
     def analyze_assignment(self, prompt_text: str) -> Dict[str, Any]:
         """
@@ -38,6 +40,19 @@ class AssignmentAnalyzer:
             "complexity_level": "intermediate"
         }
         """
+
+        if not self.model:
+            # Return minimal default analysis when API key not available
+            return {
+                "assignment_type": "general",
+                "subject_area": "general",
+                "title": "Assignment",
+                "key_requirements": [],
+                "rubric": {},
+                "suggested_structure": {},
+                "estimated_time_minutes": 60,
+                "complexity_level": "beginner"
+            }
 
         analysis_prompt = f"""You are an expert academic advisor analyzing an assignment prompt.
 
