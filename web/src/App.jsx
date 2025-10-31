@@ -4,6 +4,7 @@ import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader, handl
 import { postFile, postJSON, getJSON, delJSON, setUnauthorizedHandler } from "./lib/api";
 import IDEPage from "./pages/IDEPage";
 import LoadingLogo from "./components/LoadingLogo";
+import LandingPage from "./components/LandingPage";
 import { Analytics } from "@vercel/analytics/react";
 
 export default function App() {
@@ -155,28 +156,39 @@ export default function App() {
   };
 
   // ---------- auth ----------
-  const doSignIn = async () => {
+  const doSignIn = async (emailParam, pwdParam) => {
     setAuthBusy(true);
     try {
-      await signIn(email.trim(), pwd);
+      // Use passed parameters if available (from LandingPage), otherwise use state
+      const emailToUse = emailParam || email.trim();
+      const pwdToUse = pwdParam || pwd;
+
+      await signIn(emailToUse, pwdToUse);
       setToken(loadToken());
       setUserEmail(loadUserEmail());
       setEmail(""); setPwd("");
       showToast("Successfully signed in!");
+      // Don't call refreshDocs here - it will be called automatically when the app renders
     } catch (e) {
       showToast(`Sign in failed: ${e?.message || e}`, "error");
+      throw e; // Re-throw for LandingPage to handle
     } finally {
       setAuthBusy(false);
     }
   };
 
-  const doSignUp = async () => {
+  const doSignUp = async (emailParam, pwdParam) => {
     setAuthBusy(true);
     try {
-      await signUp(email.trim(), pwd);
+      // Use passed parameters if available (from LandingPage), otherwise use state
+      const emailToUse = emailParam || email.trim();
+      const pwdToUse = pwdParam || pwd;
+
+      await signUp(emailToUse, pwdToUse);
       showToast("Check your email to confirm your account.", "info");
     } catch (e) {
       showToast(`Sign up failed: ${e?.message || e}`, "error");
+      throw e; // Re-throw for LandingPage to handle
     } finally {
       setAuthBusy(false);
     }
@@ -296,6 +308,34 @@ export default function App() {
   // If on IDE page, show IDE component
   if (currentPage === "ide") {
     return <IDEPage />;
+  }
+
+  // Show landing page if not signed in
+  if (!isSignedIn) {
+    return (
+      <>
+        <LandingPage onSignIn={doSignIn} onSignUp={doSignUp} />
+        <Analytics />
+
+        {/* Toast notifications */}
+        {toast && (
+          <div className={`fixed bottom-6 right-6 px-6 py-4 rounded-lg shadow-2xl border-2 z-50 animate-slideIn ${
+            toast.type === "error"
+              ? "bg-red-950 border-red-800 text-red-200"
+              : toast.type === "info"
+              ? "bg-blue-950 border-blue-800 text-blue-200"
+              : "bg-green-950 border-green-800 text-green-200"
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-lg">
+                {toast.type === "error" ? "❌" : toast.type === "info" ? "ℹ️" : "✅"}
+              </span>
+              <p className="font-medium">{toast.message}</p>
+            </div>
+          </div>
+        )}
+      </>
+    );
   }
 
   return (

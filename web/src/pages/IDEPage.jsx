@@ -34,6 +34,11 @@ function IDEPage() {
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
   const [lastSuggestionTime, setLastSuggestionTime] = useState(0);
   const [suggestionCooldown, setSuggestionCooldown] = useState(0);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [dontWarnDelete, setDontWarnDelete] = useState(() => {
+    return localStorage.getItem('dontWarnDelete') === 'true';
+  });
 
   useEffect(() => {
     loadProjects();
@@ -65,8 +70,19 @@ function IDEPage() {
 
   const deleteProject = async (projectId, e) => {
     e.stopPropagation(); // Prevent opening the project when clicking delete
-    if (!confirm('Delete this assignment? This action cannot be undone.')) return;
 
+    // If user has chosen to not show warning, delete immediately
+    if (dontWarnDelete) {
+      await performDelete(projectId);
+      return;
+    }
+
+    // Otherwise show confirmation modal
+    setProjectToDelete(projectId);
+    setShowDeleteModal(true);
+  };
+
+  const performDelete = async (projectId) => {
     try {
       const response = await fetch(`${API_BASE}/ide/projects/${projectId}`, {
         method: 'DELETE',
@@ -80,14 +96,28 @@ function IDEPage() {
           setCurrentProject(null);
           setContent('');
         }
-        alert('Assignment deleted successfully');
-      } else {
-        alert('Failed to delete assignment');
       }
     } catch (error) {
       console.error('Failed to delete project:', error);
-      alert('Failed to delete assignment');
     }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (projectToDelete) {
+      await performDelete(projectToDelete);
+      setShowDeleteModal(false);
+      setProjectToDelete(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setProjectToDelete(null);
+  };
+
+  const handleDontWarnChange = (checked) => {
+    setDontWarnDelete(checked);
+    localStorage.setItem('dontWarnDelete', checked.toString());
   };
 
   const createProject = async () => {
@@ -446,6 +476,100 @@ function IDEPage() {
     }
   };
 
+  const downloadAsPDF = async () => {
+    if (!currentProject || !content) {
+      alert('No content to download');
+      return;
+    }
+
+    try {
+      // Dynamic import of jspdf
+      const { jsPDF } = await import('jspdf');
+
+      // Configure PDF with explicit settings
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Sanitize text to remove/replace unsupported characters
+      const sanitizeText = (text) => {
+        return text
+          .replace(/[\u2018\u2019]/g, "'")  // Smart single quotes to regular quotes
+          .replace(/[\u201C\u201D]/g, '"')  // Smart double quotes
+          .replace(/\u2013/g, '-')          // En dash
+          .replace(/\u2014/g, '--')         // Em dash
+          .replace(/\u2026/g, '...')        // Ellipsis
+          .replace(/[^\x00-\x7F]/g, '')     // Remove non-ASCII characters
+          .trim();
+      };
+
+      const sanitizedContent = sanitizeText(content);
+      const sanitizedTitle = sanitizeText(currentProject.title);
+
+      // Page setup
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxWidth = pageWidth - 2 * margin;
+
+      // Add title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text(sanitizedTitle, margin, margin);
+
+      // Add metadata
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Type: ${currentProject.assignment_type || 'Assignment'}`, margin, margin + 8);
+      doc.text(`Words: ${content.split(/\s+/).filter(w => w).length}`, margin, margin + 13);
+
+      // Add separator line
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, margin + 18, pageWidth - margin, margin + 18);
+
+      // Add content
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+
+      // Split content into paragraphs for better formatting
+      const paragraphs = sanitizedContent.split(/\n\n+/);
+      let y = margin + 25;
+      const lineHeight = 6;
+      const paragraphSpacing = 4;
+
+      for (const paragraph of paragraphs) {
+        if (!paragraph.trim()) continue;
+
+        const lines = doc.splitTextToSize(paragraph.trim(), maxWidth);
+
+        for (const line of lines) {
+          // Check if we need a new page
+          if (y > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+
+          doc.text(line, margin, y);
+          y += lineHeight;
+        }
+
+        // Add paragraph spacing
+        y += paragraphSpacing;
+      }
+
+      // Save the PDF
+      const fileName = `${currentProject.title.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+      doc.save(fileName);
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      alert('Failed to download PDF. Please try again.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black">
       {/* Header */}
@@ -644,6 +768,16 @@ function IDEPage() {
                         </>
                       )}
                     </div>
+                    <button
+                      onClick={downloadAsPDF}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/50 text-amber-400 border border-rose-800/30 hover:bg-rose-950/70 hover:border-amber-700/50 transition-all duration-200 text-xs cursor-pointer"
+                      title="Download as PDF"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Download PDF</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1068,6 +1202,57 @@ function IDEPage() {
                 className="px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg hover:from-rose-300 hover:to-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 Create Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-950 border-2 border-red-900/50 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-950/50 border border-red-800/50 flex items-center justify-center">
+                <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-zinc-100 mb-2">Delete Assignment?</h3>
+                <p className="text-sm text-zinc-400">
+                  This action cannot be undone. The assignment and all its content will be permanently deleted.
+                </p>
+              </div>
+            </div>
+
+            {/* Don't warn again checkbox */}
+            <div className="mb-6 flex items-start gap-3 p-3 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+              <input
+                type="checkbox"
+                id="dontWarnDelete"
+                checked={dontWarnDelete}
+                onChange={(e) => handleDontWarnChange(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-amber-500 focus:ring-2 focus:ring-amber-500/50 cursor-pointer"
+              />
+              <label htmlFor="dontWarnDelete" className="text-sm text-zinc-400 cursor-pointer select-none">
+                Don't warn me again when deleting assignments
+              </label>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelDelete}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 transition-all font-medium cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all font-medium shadow-lg shadow-red-600/25 cursor-pointer"
+              >
+                Delete
               </button>
             </div>
           </div>
