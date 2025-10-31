@@ -26,6 +26,9 @@ Thumbs.db
 # We DO want tasks.json
 !.vscode/tasks.json
 
+# Claude Code settings
+.claude/settings.local.json
+
 # Streamlit
 .streamlit/
 ui/.streamlit/secrets.toml
