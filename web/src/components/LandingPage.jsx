@@ -24,7 +24,10 @@ export default function LandingPage({ onSignIn, onSignUp }) {
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden relative">
+    <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
+      {/* Gradient background - enhanced amber/pink horizon fading to black */}
+      <div className="absolute inset-0 bg-gradient-to-b from-amber-500/25 via-pink-500/20 via-35% to-black to-65%"></div>
+
       {/* Animated background gradient orbs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 -left-1/4 w-96 h-96 bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }}></div>
@@ -35,13 +38,18 @@ export default function LandingPage({ onSignIn, onSignUp }) {
       <div className="relative z-10 w-full max-w-6xl">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left side - Hero content */}
-          <div className="space-y-8 text-center lg:text-left">
+          <div className="space-y-8 text-center">
             {/* Main heading */}
-            <div className="space-y-6 select-none">
-              {/* Logo - Bigger and placed at top */}
-              <div className="flex justify-center lg:justify-start">
-                <div className="animate-float scale-150">
-                  <LoadingLogo size="lg" />
+            <div className="space-y-8 select-none">
+              {/* Logo - Larger, centered above title with glow */}
+              <div className="flex justify-center mb-6">
+                <div className="animate-float relative opacity-80">
+                  {/* Glow effect behind logo */}
+                  <div className="absolute inset-0 blur-2xl bg-gradient-to-br from-amber-500/30 to-pink-500/30 rounded-full"></div>
+                  {/* Logo scaled to 2.5x */}
+                  <div className="relative scale-[2.5]">
+                    <LoadingLogo size="lg" />
+                  </div>
                 </div>
               </div>
 
@@ -51,7 +59,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                 </span>
               </h1>
 
-              <p className="text-2xl md:text-3xl text-zinc-300 font-semibold">
+              <p className="text-xl md:text-2xl text-zinc-400 font-medium">
                 Breeze through assignments and prepare for exams, powered completely by AI
               </p>
             </div>
@@ -60,7 +68,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
           {/* Right side - Auth form */}
           <div className="flex justify-center lg:justify-end">
             <div className="w-full max-w-md">
-              <div className="bg-zinc-950 border-2 border-zinc-800/50 rounded-2xl p-8 shadow-2xl backdrop-blur-sm">
+              <div className="bg-zinc-950 border-2 border-zinc-800/70 rounded-2xl p-8 shadow-[0_0_50px_rgba(0,0,0,0.5)] backdrop-blur-sm">
                 {/* Form header */}
                 <div className="text-center mb-6 select-none">
                   <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent mb-2">
@@ -74,7 +82,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                 {/* Auth form */}
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">Email</label>
+                    <label className="block text-sm font-medium text-zinc-400 mb-2 select-none">Email</label>
                     <input
                       type="email"
                       value={email}
@@ -87,7 +95,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">Password</label>
+                    <label className="block text-sm font-medium text-zinc-400 mb-2 select-none">Password</label>
                     <input
                       type="password"
                       value={password}

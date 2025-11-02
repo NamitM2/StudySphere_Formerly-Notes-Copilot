@@ -69,15 +69,54 @@ export default function SignIn() {
       )}
       <div className="max-w-md mx-auto mt-12 card">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">
-            StudySphere
-          </h1>
           <div className="flex justify-center mb-4">
             <LoadingLogo size="md" />
           </div>
-          <p className="text-zinc-400 text-sm">
-            Breeze through assignments and prepare for exams, powered completely by AI
-          </p>
+          <div className="relative inline-block">
+            {/* Large logo ring around the text */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-30 pointer-events-none">
+              <svg width="300" height="180" viewBox="0 0 300 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="ringGradientCircle" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style={{stopColor: '#f59e0b', stopOpacity: 1}} />
+                    <stop offset="50%" style={{stopColor: '#fbbf24', stopOpacity: 1}} />
+                    <stop offset="100%" style={{stopColor: '#fcd34d', stopOpacity: 1}} />
+                  </linearGradient>
+                  <linearGradient id="orbGradientCircle" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style={{stopColor: '#f472b6', stopOpacity: 1}} />
+                    <stop offset="100%" style={{stopColor: '#f472b6', stopOpacity: 1}} />
+                  </linearGradient>
+                </defs>
+                <circle cx="150" cy="90" r="80" fill="none" stroke="url(#ringGradientCircle)" strokeWidth="16" opacity="0.8"/>
+                <g>
+                  <circle r="12" fill="url(#orbGradientCircle)" opacity="0.9">
+                    <animateMotion dur="3.2s" repeatCount="indefinite" path="M 230,90 A 80,80 0 1,1 230,89.9 Z"/>
+                  </circle>
+                  <circle r="12" fill="url(#orbGradientCircle)" opacity="0.9">
+                    <animateMotion dur="4.8s" repeatCount="indefinite" begin="-1.8s" path="M 230,90 A 80,80 0 1,0 230,90.1 Z"/>
+                  </circle>
+                  <circle r="12" fill="url(#orbGradientCircle)" opacity="0.9">
+                    <animateMotion dur="4.1s" repeatCount="indefinite" begin="-3.2s" path="M 230,90 A 80,80 0 1,1 230,89.9 Z"/>
+                  </circle>
+                  <circle r="12" fill="url(#orbGradientCircle)" opacity="0.9">
+                    <animateMotion dur="3.5s" repeatCount="indefinite" begin="-0.7s" path="M 230,90 A 80,80 0 1,0 230,90.1 Z"/>
+                  </circle>
+                  <circle r="12" fill="url(#orbGradientCircle)" opacity="0.9">
+                    <animateMotion dur="4.6s" repeatCount="indefinite" begin="-2.3s" path="M 230,90 A 80,80 0 1,1 230,89.9 Z"/>
+                  </circle>
+                </g>
+              </svg>
+            </div>
+            {/* Text content */}
+            <div className="relative z-10">
+              <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent">
+                StudySphere
+              </h1>
+              <p className="text-zinc-400 text-sm">
+                Breeze through assignments and prepare for exams, powered completely by AI
+              </p>
+            </div>
+          </div>
         </div>
         <form className="space-y-3" onSubmit={doSignIn}>
           <input
