@@ -25,6 +25,19 @@
 :root { color-scheme: dark; }
 html, body, #root { height: 100%; }
 
+/* Force default cursor everywhere - no disabled cursor states */
+* {
+  cursor: default !important;
+}
+
+button, a, input, select, textarea {
+  cursor: pointer !important;
+}
+
+button:disabled, input:disabled, select:disabled, textarea:disabled {
+  cursor: pointer !important;
+}
+
 /* Smooth background transition */
 html {
   transition: background-color 0.5s ease-in-out;

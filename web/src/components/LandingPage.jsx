@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import LoadingLogo from './LoadingLogo';
+import GoogleSignInButton from './GoogleSignInButton';
+import { signInWithGoogle } from '../lib/auth';
 
 export default function LandingPage({ onSignIn, onSignUp }) {
   const [mode, setMode] = useState('signin'); // 'signin' or 'signup'
@@ -19,6 +21,16 @@ export default function LandingPage({ onSignIn, onSignUp }) {
         await onSignUp(email, password);
       }
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.error('Google sign-in error:', error);
       setLoading(false);
     }
   };
@@ -77,6 +89,19 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                   <p className="text-zinc-500 text-sm">
                     {mode === 'signin' ? 'Sign in to continue your journey' : 'Create your free account'}
                   </p>
+                </div>
+
+                {/* Google Sign-In Button */}
+                <GoogleSignInButton onClick={handleGoogleSignIn} disabled={loading} />
+
+                {/* Divider */}
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-zinc-800"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-4 bg-zinc-950 text-zinc-500 select-none">or continue with email</span>
+                  </div>
                 </div>
 
                 {/* Auth form */}

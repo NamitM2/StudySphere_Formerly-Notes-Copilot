@@ -1,10 +1,11 @@
 // web/src/SignIn.jsx
 // Path: web/src/SignIn.jsx
 import React, { useState } from 'react';
-import { signIn, signUp } from './lib/auth';
+import { signIn, signUp, signInWithGoogle } from './lib/auth';
 import { useNavigate } from 'react-router-dom';
 import Toast from './components/Toast';
 import LoadingLogo from './components/LoadingLogo';
+import GoogleSignInButton from './components/GoogleSignInButton';
 
 export default function SignIn() {
   const nav = useNavigate();
@@ -53,6 +54,19 @@ export default function SignIn() {
 
       setToast({ message: errorMsg, type: 'error' });
     } finally {
+      setBusy(false);
+      setBusyAction(null);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setBusy(true);
+    setBusyAction('google');
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      console.error('Google sign-in error:', err);
+      setToast({ message: 'Google sign-in failed. Please try again.', type: 'error' });
       setBusy(false);
       setBusyAction(null);
     }
@@ -118,6 +132,20 @@ export default function SignIn() {
             </div>
           </div>
         </div>
+
+        {/* Google Sign-In Button */}
+        <GoogleSignInButton onClick={handleGoogleSignIn} disabled={busy} />
+
+        {/* Divider */}
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-zinc-700"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-4 bg-zinc-900 text-zinc-500 select-none">or continue with email</span>
+          </div>
+        </div>
+
         <form className="space-y-3" onSubmit={doSignIn}>
           <input
             className="input"

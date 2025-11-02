@@ -116,6 +116,25 @@ export async function signUp(email, password) {
   if (data?.access_token) saveTokenData(data); // some projects auto-sign in
   return data;
 }
+
+export async function signInWithGoogle() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Missing Supabase env vars.");
+  }
+
+  // Get the current site URL for OAuth redirect
+  const redirectTo = window.location.hostname === 'localhost'
+    ? window.location.origin
+    : 'https://studysphere.app'; // Use your custom domain when you have one
+
+  // Construct the OAuth URL with additional parameters
+  const oauthUrl = new URL(`${SUPABASE_URL}/auth/v1/authorize`);
+  oauthUrl.searchParams.set('provider', 'google');
+  oauthUrl.searchParams.set('redirect_to', redirectTo);
+
+  // Redirect to Google OAuth
+  window.location.href = oauthUrl.toString();
+}
 // --- extras to make pages trivial ---
 export function getAuthHeader() {
   const tok = loadToken();
