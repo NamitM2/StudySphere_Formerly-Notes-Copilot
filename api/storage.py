@@ -32,7 +32,11 @@ def _bucket_name() -> str:
 
 def _client() -> Client:
     url = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or ""
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE")
+        or ""
+    )
     if not url or not key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
     return create_client(url, key)
@@ -143,14 +147,3 @@ def create_signed_url(path: str, expires_in_seconds: int = 3600) -> str:
     c = _client()
     res = c.storage.from_(_bucket_name()).create_signed_url(path, expires_in_seconds)
     return res.get("signedURL") if isinstance(res, dict) else res
-# inside api/storage.py
-def _client():
-    url = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-    key = (
-        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        or os.getenv("SUPABASE_SERVICE_ROLE")
-        or ""
-    )
-    if not url or not key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-    return create_client(url, key)

@@ -1,7 +1,7 @@
 # api/routes_v2/ide_routes.py
 # IDE Routes for Assignment workspace
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -12,10 +12,13 @@ except:
     from api.routes import get_current_user
 
 from api.supa import admin_client
+from api.db import get_repo
+from api.logger import get_logger
 from core.ide.assignment_analyzer import AssignmentAnalyzer
 from core.ide.ai_assistant import IDEAssistant
 
 router = APIRouter(prefix="/ide", tags=["ide"])
+logger = get_logger(__name__)
 
 # Initialize services
 analyzer = AssignmentAnalyzer()

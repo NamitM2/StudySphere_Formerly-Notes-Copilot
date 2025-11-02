@@ -29,10 +29,6 @@ Thumbs.db
 # Claude Code settings
 .claude/settings.local.json
 
-# Streamlit
-.streamlit/
-ui/.streamlit/secrets.toml
-
 # Secrets
 .env
 
@@ -76,11 +72,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Streamlit cache
-.streamlit/cache/
-.streamlit/config.toml
-
-# Node (for the new frontend later)
+# Node frontend
 node_modules/
 dist/
 build/

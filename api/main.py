@@ -6,6 +6,10 @@ from api.routes import router as api_router
 from api.routes_v2.ide_routes import router as ide_router
 from api.routes_v2.worksheet_routes import router as worksheet_router
 from core.background_worker import start_worker
+from api.config_validator import validate_startup_config
+
+# Validate configuration on startup
+validate_startup_config(exit_on_failure=True)
 
 # Get frontend origin from environment variable
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://notes-copilot.vercel.app")

@@ -1,6 +1,7 @@
 # core/ide/ai_assistant.py
 
 import google.generativeai as genai
+import json
 import os
 from typing import Dict, Any, Optional, List
 
@@ -23,6 +24,10 @@ class IDEAssistant:
         else:
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel("gemini-2.5-flash")
+
+    def is_available(self) -> bool:
+        """Return True if Gemini model is configured."""
+        return self.model is not None
 
     def autocomplete(
         self,
@@ -153,6 +158,94 @@ Return ONLY valid JSON. Make suggestions SPECIFIC to the assignment topic, not g
         except Exception as e:
             print(f"[SUGGESTIONS] Error: {e}")
             return self._default_suggestions(assignment_context)
+
+    def suggest_field_answer(
+        self,
+        *,
+        assignment_context: Dict[str, Any],
+        field_metadata: Dict[str, Any],
+        current_answer: str = "",
+        other_answers: Optional[Dict[str, str]] = None,
+        instructions: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Provide a short suggestion for a specific worksheet field.
+        Returns JSON with suggestion text, explanation, and confidence.
+        """
+        if not self.model:
+            raise RuntimeError("IDE assistant not configured (missing GOOGLE_API_KEY)")
+
+        question_text = (field_metadata or {}).get("context") or (field_metadata or {}).get("placeholder") or ""
+        field_type = (field_metadata or {}).get("type", "text_line")
+        field_label = (field_metadata or {}).get("question_number") or field_metadata.get("id", "")
+
+        other_answers = other_answers or {}
+        # Format other answers (exclude current field)
+        other_lines = []
+        for fid, answer in other_answers.items():
+            if fid == field_metadata.get("id") or not answer:
+                continue
+            clean = str(answer).strip()
+            if clean:
+                other_lines.append(f"- {fid}: {clean}")
+        other_answers_text = "\n".join(other_lines) if other_lines else "None provided"
+
+        assignment_summary = (
+            f"Title: {assignment_context.get('title') or 'Untitled'}\n"
+            f"Type: {assignment_context.get('assignment_type') or 'general'}\n"
+            f"Prompt: {assignment_context.get('assignment_prompt') or 'No prompt available.'}"
+        )
+
+        extra_instructions = instructions.strip() if instructions else "Help the student craft their own answer without doing academic dishonesty."
+
+        prompt = f"""
+You are a thoughtful tutor helping a student fill out a worksheet. Offer guidance, not a copyable final answer.
+
+Assignment context:
+{assignment_summary}
+
+Worksheet field:
+- Label: {field_label or 'N/A'}
+- Type: {field_type}
+- Question or instruction: {question_text or 'Not provided'}
+- Current answer: {current_answer.strip() or '[empty]'}
+
+Other worksheet answers provided so far:
+{other_answers_text}
+
+Specific instructions: {extra_instructions}
+
+Produce a JSON object with:
+{{
+  "suggestion": "One or two sentences the student can adapt.",
+  "explanation": "Why this suggestion fits the assignment (1 sentence).",
+  "confidence": "high|medium|low"
+}}
+
+Stay encouraging, keep the student responsible for the final wording, and avoid fabricating facts.
+"""
+
+        response = self.model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.4,
+                "top_p": 0.9,
+                "max_output_tokens": 300,
+                "response_mime_type": "application/json",
+            },
+        )
+
+        try:
+            data = json.loads(response.text)
+            if not isinstance(data, dict):
+                raise ValueError("response was not a JSON object")
+            return {
+                "suggestion": str(data.get("suggestion", "")).strip(),
+                "explanation": str(data.get("explanation", "")).strip(),
+                "confidence": str(data.get("confidence", "medium")).strip().lower() or "medium",
+            }
+        except Exception as exc:
+            raise RuntimeError(f"Failed to interpret Gemini response: {exc}") from exc
 
     def improve_content(
         self,

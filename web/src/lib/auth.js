@@ -3,6 +3,10 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.replace(/\/$/, "");
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Auto-login for local dev (optional - only if env vars are set)
+const DEV_AUTO_LOGIN_EMAIL = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
+const DEV_AUTO_LOGIN_PASSWORD = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+
 // ---- local storage helpers ----
 function saveTokenData(data) {
   const tok = data?.access_token || "";
@@ -186,4 +190,28 @@ export async function handleEmailVerification() {
   }
 
   return null;
+}
+
+// Auto-login for local development
+export async function autoLoginIfDev() {
+  // Only auto-login if:
+  // 1. We're in development (localhost)
+  // 2. Not already logged in
+  // 3. Dev credentials are configured
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const hasToken = !!loadToken();
+
+  if (!isLocalhost || hasToken || !DEV_AUTO_LOGIN_EMAIL || !DEV_AUTO_LOGIN_PASSWORD) {
+    return false;
+  }
+
+  try {
+    console.log('[DEV] Auto-logging in with dev credentials...');
+    await signIn(DEV_AUTO_LOGIN_EMAIL, DEV_AUTO_LOGIN_PASSWORD);
+    console.log('[DEV] Auto-login successful!');
+    return true;
+  } catch (error) {
+    console.warn('[DEV] Auto-login failed:', error.message);
+    return false;
+  }
 }

@@ -1,6 +1,6 @@
 // web/src/App.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader, handleEmailVerification } from "./lib/auth";
+import { loadToken, loadUserEmail, signIn, signUp, signOut, getAuthHeader, handleEmailVerification, autoLoginIfDev } from "./lib/auth";
 import { postFile, postJSON, getJSON, delJSON, setUnauthorizedHandler } from "./lib/api";
 import IDEPage from "./pages/IDEPage";
 import LoadingLogo from "./components/LoadingLogo";
@@ -67,7 +67,7 @@ export default function App() {
     document.documentElement.classList.add("dark");
   }, []);
 
-  // Set up automatic sign-out on 401 errors
+  // Set up automatic sign-out on 401 errors + auto-login for dev
   useEffect(() => {
     const handleUnauthorized = async () => {
       await signOut();
@@ -77,6 +77,14 @@ export default function App() {
     };
 
     setUnauthorizedHandler(handleUnauthorized);
+
+    // Try auto-login for local dev
+    autoLoginIfDev().then((success) => {
+      if (success) {
+        setToken(loadToken());
+        setUserEmail(loadUserEmail());
+      }
+    });
   }, []);
 
   // ---------- docs ----------
@@ -444,11 +452,18 @@ export default function App() {
                   />
 
                   <button
-                    className="w-full py-3 rounded-lg font-medium transition-all duration-300 bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 text-white hover:from-rose-400 hover:via-amber-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-default shadow-lg shadow-rose-600/25 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98]"
+                    className="w-full py-3 rounded-lg font-medium transition-all duration-300 bg-gradient-to-r from-orange-500 via-amber-500 to-pink-500 text-white hover:from-rose-400 hover:via-amber-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-default shadow-lg shadow-rose-600/25 hover:shadow-rose-600/40 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                     disabled={authBusy || !email || !pwd}
                     onClick={mode === "signin" ? doSignIn : doSignUp}
                   >
-                    {authBusy ? "Processing..." : mode === "signin" ? "Sign In" : "Create Account"}
+                    {authBusy ? (
+                      <>
+                        <LoadingLogo size="sm" />
+                        Processing...
+                      </>
+                    ) : (
+                      mode === "signin" ? "Sign In" : "Create Account"
+                    )}
                   </button>
                 </>
               ) : (

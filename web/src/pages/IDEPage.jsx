@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { loadToken, getAuthHeader } from '../lib/auth';
 import LoadingLogo from '../components/LoadingLogo';
 import PDFWorksheet from '../components/PDFWorksheet';
-import { uploadWorksheet } from '../lib/api';
+import { uploadWorksheet, getWorksheetFields } from '../lib/api';
 
 // Use the same API base as the rest of the app
 const API_BASE = (
@@ -59,13 +59,49 @@ function IDEPage() {
         return;
       }
 
+      const authHeaders = getAuthHeader();
       const response = await fetch(`${API_BASE}/ide/projects`, {
-        headers: getAuthHeader()
+        headers: authHeaders
       });
 
       if (response.ok) {
         const data = await response.json();
         setProjects(data);
+
+        // Preload worksheet PDF URLs for all projects on first load
+        try {
+          const entries = await Promise.all(
+            data.map(async (project) => {
+              try {
+                const worksheet = await getWorksheetFields(project.id, authHeaders);
+                if (worksheet?.pdf_url) {
+                  return [project.id, worksheet.pdf_url];
+                }
+              } catch (err) {
+                console.warn(`[IDE] No worksheet metadata for project ${project.id}`, err);
+              }
+              return null;
+            })
+          );
+
+          const urlMap = new Map(entries.filter(Boolean));
+          if (urlMap.size) {
+            setUploadedPdfFiles(urlMap);
+            // If the first project has a worksheet and none is open yet, prime the viewer
+            if (!currentProject) {
+              const firstWithPdf = data.find(p => urlMap.has(p.id));
+              if (firstWithPdf) {
+                setCurrentProject(firstWithPdf);
+                setContent(firstWithPdf.current_content || '');
+                setIsPdfWorksheet(true);
+                setWorksheetPdfUrl(urlMap.get(firstWithPdf.id));
+                setIsSidebarCollapsed(true);
+              }
+            }
+          }
+        } catch (prefetchErr) {
+          console.warn('[IDE] Failed to prefetch worksheet URLs:', prefetchErr);
+        }
       }
     } catch (error) {
       console.error('Failed to load projects:', error);
@@ -189,7 +225,7 @@ function IDEPage() {
           // Upload PDF to backend for field detection
           try {
             console.log('[IDE] Uploading PDF worksheet for field detection...');
-            const worksheetData = await uploadWorksheet(project.id, templateFile);
+            const worksheetData = await uploadWorksheet(project.id, templateFile, getAuthHeader());
             console.log('[IDE] Worksheet uploaded successfully:', worksheetData);
 
             // Update to use the permanent Supabase URL instead of blob URL
@@ -265,15 +301,26 @@ function IDEPage() {
 
         // Check if this project has a PDF worksheet
         const storedPdfUrl = uploadedPdfFiles.get(projectId);
-        const isPdfProject = project.current_content?.startsWith('[PDF Worksheet:') || storedPdfUrl;
+        let resolvedPdfUrl = storedPdfUrl;
 
-        if (isPdfProject && storedPdfUrl) {
-          setIsPdfWorksheet(true);
-          setWorksheetPdfUrl(storedPdfUrl);
-        } else {
-          setIsPdfWorksheet(false);
-          setWorksheetPdfUrl(null);
+        if (!resolvedPdfUrl) {
+          try {
+            const worksheetData = await getWorksheetFields(projectId, getAuthHeader());
+            if (worksheetData?.pdf_url) {
+              resolvedPdfUrl = worksheetData.pdf_url;
+              setUploadedPdfFiles(prev => {
+                const newMap = new Map(prev);
+                newMap.set(projectId, worksheetData.pdf_url);
+                return newMap;
+              });
+            }
+          } catch (err) {
+            console.warn('[IDE] No worksheet metadata found for project', projectId, err);
+          }
         }
+
+        setIsPdfWorksheet(Boolean(resolvedPdfUrl));
+        setWorksheetPdfUrl(resolvedPdfUrl || null);
       }
     } catch (error) {
       console.error('Failed to open project:', error);
@@ -852,10 +899,7 @@ function IDEPage() {
                       )}
                       {saveStatus === 'saving' && (
                         <>
-                          <svg className="w-4 h-4 text-amber-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
+                          <LoadingLogo size="xs" />
                           <span className="text-zinc-400">Saving...</span>
                         </>
                       )}
@@ -908,7 +952,7 @@ function IDEPage() {
 
               {/* Right Sidebar - Sphere Panels - Only show when sidebar is collapsed */}
               {isSidebarCollapsed && (
-              <div className="w-96 flex-shrink-0 flex flex-col bg-zinc-950">
+              <div className="w-full sm:w-96 max-w-md flex-shrink-0 flex flex-col bg-zinc-950">
                 {/* Content Improvement Suggestions Panel */}
                 <div className="h-1/2 flex flex-col border-b border-rose-950/40">
                   <div className="p-3 border-b border-amber-900/50 bg-gradient-to-r from-orange-500 to-amber-500 text-white">
@@ -924,7 +968,7 @@ function IDEPage() {
                       <button
                         onClick={refreshContentSuggestions}
                         disabled={isGeneratingSuggestions || suggestionCooldown > 0}
-                        className="bg-white/20 hover:bg-white/30 disabled:bg-white/10 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium transition-all flex items-center gap-1.5"
+                        className="bg-white/20 hover:bg-white/30 disabled:bg-white/10 disabled:cursor-default text-white px-3 py-1.5 rounded text-xs font-medium transition-all flex items-center gap-1.5"
                         title={suggestionCooldown > 0 ? `Wait ${suggestionCooldown}s` : 'Generate suggestions'}
                       >
                         {isGeneratingSuggestions ? (
@@ -1132,7 +1176,7 @@ function IDEPage() {
                         <button
                           onClick={sendChatMessage}
                           disabled={!chatInput.trim() || isGenerating}
-                          className="bg-gradient-to-r from-amber-500 to-pink-500 text-white px-4 py-2 rounded hover:from-pink-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                          className="bg-gradient-to-r from-amber-500 to-pink-500 text-white px-4 py-2 rounded hover:from-pink-400 hover:to-amber-400 disabled:opacity-50 disabled:cursor-default transition-all"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -1201,7 +1245,7 @@ function IDEPage() {
                   {templateFile ? (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <svg className="w-8 h-8 text-pink-400" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-8 h-8 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                         </svg>
                         <div className="text-left">
@@ -1262,9 +1306,16 @@ function IDEPage() {
               <button
                 onClick={createProject}
                 disabled={loading || (!assignmentPrompt.trim() && !templateFile)}
-                className="px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg hover:from-rose-300 hover:to-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg hover:from-rose-300 hover:to-amber-300 disabled:opacity-50 disabled:cursor-default transition-all flex items-center gap-2"
               >
-                {loading ? 'Creating...' : 'Create Assignment'}
+                {loading ? (
+                  <>
+                    <LoadingLogo size="sm" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Assignment'
+                )}
               </button>
             </div>
           </div>
@@ -1318,7 +1369,7 @@ function IDEPage() {
                   setNewFolderName('');
                 }}
                 disabled={!newFolderName.trim()}
-                className="px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg hover:from-rose-300 hover:to-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="px-4 py-2 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-lg hover:from-rose-300 hover:to-amber-300 disabled:opacity-50 disabled:cursor-default transition-all"
               >
                 Create Folder
               </button>

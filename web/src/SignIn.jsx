@@ -9,13 +9,15 @@ import LoadingLogo from './components/LoadingLogo';
 export default function SignIn() {
   const nav = useNavigate();
   const [email, setEmail] = useState('');
-  const [pwd, setPwd]   = useState('');
+  const [pwd, setPwd] = useState('');
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState(null);
 
   async function doSignIn(e) {
     e.preventDefault();
     setBusy(true);
+    setBusyAction('signin');
     try {
       await signIn(email, pwd);
       setToast({ message: 'Signed in successfully!', type: 'success' });
@@ -26,11 +28,13 @@ export default function SignIn() {
       setToast({ message: err.message || 'Sign in failed. Please try again.', type: 'error' });
     } finally {
       setBusy(false);
+      setBusyAction(null);
     }
   }
 
   async function doSignUp() {
     setBusy(true);
+    setBusyAction('signup');
     try {
       await signUp(email, pwd);
       setToast({
@@ -50,6 +54,7 @@ export default function SignIn() {
       setToast({ message: errorMsg, type: 'error' });
     } finally {
       setBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -75,11 +80,48 @@ export default function SignIn() {
           </p>
         </div>
         <form className="space-y-3" onSubmit={doSignIn}>
-          <input className="input" type="email" placeholder="you@illinois.edu" value={email} onChange={e=>setEmail(e.target.value)} required />
-          <input className="input" type="password" placeholder="••••••••" value={pwd} onChange={e=>setPwd(e.target.value)} required />
+          <input
+            className="input"
+            type="email"
+            placeholder="you@illinois.edu"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            className="input"
+            type="password"
+            placeholder="********"
+            value={pwd}
+            onChange={(e) => setPwd(e.target.value)}
+            required
+          />
           <div className="flex gap-2">
-            <button className="btn" disabled={busy}>Sign in</button>
-            <button onClick={doSignUp} className="btn" type="button" disabled={busy}>Sign up</button>
+            <button className="btn flex items-center justify-center gap-2" disabled={busy}>
+              {busyAction === 'signin' ? (
+                <>
+                  <LoadingLogo size="xs" />
+                  <span>Signing in...</span>
+                </>
+              ) : (
+                'Sign in'
+              )}
+            </button>
+            <button
+              onClick={doSignUp}
+              className="btn flex items-center justify-center gap-2"
+              type="button"
+              disabled={busy}
+            >
+              {busyAction === 'signup' ? (
+                <>
+                  <LoadingLogo size="xs" />
+                  <span>Creating...</span>
+                </>
+              ) : (
+                'Sign up'
+              )}
+            </button>
           </div>
         </form>
       </div>

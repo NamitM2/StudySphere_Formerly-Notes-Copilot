@@ -120,15 +120,17 @@ export async function delJSON(path, headers = {}) {
  * Upload a PDF worksheet and detect fillable fields
  * @param {string} projectId - Assignment project ID
  * @param {File} pdfFile - PDF file to upload
+ * @param {Object} authHeaders - Authorization headers from getAuthHeader()
  * @returns {Promise<{project_id, pdf_url, fields, page_count}>}
  */
-export async function uploadWorksheet(projectId, pdfFile) {
+export async function uploadWorksheet(projectId, pdfFile, authHeaders = {}) {
   const url = joinURL(API_BASE, `/ide/worksheet/upload?project_id=${projectId}`);
   const formData = new FormData();
   formData.append('file', pdfFile, pdfFile.name);
 
   const resp = await fetch(url, {
     method: 'POST',
+    headers: { ...authHeaders },
     body: formData,
     credentials: 'include',
   });
@@ -139,28 +141,43 @@ export async function uploadWorksheet(projectId, pdfFile) {
 /**
  * Get worksheet fields and saved answers
  * @param {string} projectId - Assignment project ID
+ * @param {Object} authHeaders - Authorization headers from getAuthHeader()
  * @returns {Promise<{project_id, pdf_url, fields, answers}>}
  */
-export async function getWorksheetFields(projectId) {
-  return getJSON(`/ide/worksheet/${projectId}/fields`);
+export async function getWorksheetFields(projectId, authHeaders = {}) {
+  return getJSON(`/ide/worksheet/${projectId}/fields`, { headers: authHeaders });
 }
 
 /**
  * Save worksheet field answers
  * @param {string} projectId - Assignment project ID
  * @param {Object} answers - Map of field_id -> answer
+ * @param {Object} authHeaders - Authorization headers from getAuthHeader()
  * @returns {Promise<{project_id, saved_count, timestamp}>}
  */
-export async function saveWorksheetAnswers(projectId, answers) {
-  return putJSON(`/ide/worksheet/${projectId}/save`, answers);
+export async function saveWorksheetAnswers(projectId, answers, authHeaders = {}) {
+  return putJSON(`/ide/worksheet/${projectId}/save`, answers, authHeaders);
 }
 
 /**
  * Delete a worksheet
  * @param {string} projectId - Assignment project ID
+ * @param {Object} authHeaders - Authorization headers from getAuthHeader()
  * @returns {Promise<{message}>}
  */
-export async function deleteWorksheet(projectId) {
-  return delJSON(`/ide/worksheet/${projectId}`);
+export async function deleteWorksheet(projectId, authHeaders = {}) {
+  return delJSON(`/ide/worksheet/${projectId}`, authHeaders);
+}
+
+/**
+ * Request an AI suggestion for a specific worksheet field
+ * @param {string} projectId
+ * @param {string} fieldId
+ * @param {Object} body - { current_answer, instructions }
+ * @param {Object} authHeaders
+ * @returns {Promise<{project_id, field_id, suggestion, explanation, confidence}>}
+ */
+export async function getWorksheetFieldSuggestion(projectId, fieldId, body = {}, authHeaders = {}) {
+  return postJSON(`/ide/worksheet/${projectId}/fields/${fieldId}/suggest`, body, authHeaders);
 }
 

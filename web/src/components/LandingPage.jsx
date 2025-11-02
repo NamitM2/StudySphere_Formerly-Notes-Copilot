@@ -37,7 +37,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
           {/* Left side - Hero content */}
           <div className="space-y-8 text-center lg:text-left">
             {/* Main heading */}
-            <div className="space-y-6">
+            <div className="space-y-6 select-none">
               {/* Logo - Bigger and placed at top */}
               <div className="flex justify-center lg:justify-start">
                 <div className="animate-float scale-150">
@@ -62,7 +62,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
             <div className="w-full max-w-md">
               <div className="bg-zinc-950 border-2 border-zinc-800/50 rounded-2xl p-8 shadow-2xl backdrop-blur-sm">
                 {/* Form header */}
-                <div className="text-center mb-6">
+                <div className="text-center mb-6 select-none">
                   <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-400 via-amber-400 to-pink-400 bg-clip-text text-transparent mb-2">
                     {mode === 'signin' ? 'Welcome Back' : 'Get Started'}
                   </h2>
@@ -92,7 +92,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="********"
                       className="w-full px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all"
                       disabled={loading}
                       required
@@ -116,7 +116,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
                 </form>
 
                 {/* Toggle mode */}
-                <div className="mt-6 text-center">
+                <div className="mt-6 text-center select-none">
                   <button
                     onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
                     disabled={loading}
