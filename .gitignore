@@ -32,6 +32,9 @@ Thumbs.db
 # Secrets
 .env
 
+# Claude context (local only, not tracked)
+claude.md
+
 # Caches
 .pytest_cache/
 .mypy_cache/

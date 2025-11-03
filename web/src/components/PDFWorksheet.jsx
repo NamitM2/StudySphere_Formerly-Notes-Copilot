@@ -501,6 +501,7 @@ export default function PDFWorksheet({
     console.log('[PDFWorksheet] getViewportRect - bounds:', bounds, 'usesNormalized:', usesNormalized);
     console.log('[PDFWorksheet] getViewportRect - cssWidth:', cssWidth, 'cssHeight:', cssHeight);
     console.log('[PDFWorksheet] getViewportRect - pdfWidth:', pdfWidth, 'pdfHeight:', pdfHeight);
+    console.log('[PDFWorksheet] getViewportRect - viewport:', viewport ? { width: viewport.width, height: viewport.height } : null);
 
     if (!usesNormalized) {
       console.error('[PDFWorksheet] Received non-normalized coordinates - this should not happen with bounds_version >= 3');
@@ -508,13 +509,44 @@ export default function PDFWorksheet({
     }
 
     // Coordinates are normalized (0-1 range) with top-left origin
-    // Apply 5/3 DPI scale factor (120 DPI / 72 DPI)
-    const SCALE_FACTOR = 5 / 3;
+    // Backend normalizes by dividing by PDF user-space dimensions (e.g., 612×792)
+    // Frontend needs to denormalize to viewport pixel space
 
-    const left = rawX * cssWidth * SCALE_FACTOR;
-    const top = rawY * cssHeight * SCALE_FACTOR;
-    const width = rawW * cssWidth * SCALE_FACTOR;
-    const height = rawH * cssHeight * SCALE_FACTOR;
+    const viewportWidth = viewport?.width || cssWidth;
+    const viewportHeight = viewport?.height || cssHeight;
+
+    // The correct transformation: normalized → PDF space → viewport space
+    // normalized * pdfDimension = PDF coordinate
+    // PDF coordinate * (viewport / pdf) = viewport coordinate
+    // Combined: normalized * viewport = viewport coordinate (theoretically)
+    // BUT empirically this doesn't work, suggesting the backend normalization
+    // or our viewport calculation is off
+
+    // X-axis works perfectly with 5/3 throughout the page
+    // Y-axis with 5/3 causes drift - boxes are too low at bottom (over-scaled)
+    // This means we need a SMALLER Y scale factor
+    const EMPIRICAL_SCALE_X = 5 / 3; // 1.6667 - works perfectly for X
+    const EMPIRICAL_SCALE_Y = 1.47;  // Reduced from 1.67 to compensate for drift
+
+    console.log('[PDFWorksheet] Scale factors:', {
+      pdfDimensions: `${pdfWidth.toFixed(2)} × ${pdfHeight.toFixed(2)}`,
+      viewportDimensions: `${viewportWidth.toFixed(2)} × ${viewportHeight.toFixed(2)}`,
+      scaleX: EMPIRICAL_SCALE_X.toFixed(4),
+      scaleY: EMPIRICAL_SCALE_Y.toFixed(4),
+      sampleInput: { x: rawX.toFixed(4), y: rawY.toFixed(4) }
+    });
+
+    // Apply different scales for X and Y to account for aspect ratio mismatch
+    const left = rawX * viewportWidth * EMPIRICAL_SCALE_X;
+    const top = rawY * viewportHeight * EMPIRICAL_SCALE_Y;
+    const width = rawW * viewportWidth * EMPIRICAL_SCALE_X;
+    const height = rawH * viewportHeight * EMPIRICAL_SCALE_Y;
+
+    // Log every 5th field to see if Y drift is linear or nonlinear
+    const fieldIndex = Math.floor(Math.random() * 1000); // approximate
+    if (fieldIndex % 5 === 0) {
+      console.log(`[PDFWorksheet] Field Y analysis - rawY: ${rawY.toFixed(4)}, viewportHeight: ${viewportHeight.toFixed(2)}, computed top: ${top.toFixed(2)}, expected ratio: ${(top / viewportHeight).toFixed(4)}`);
+    }
 
     console.log('[PDFWorksheet] getViewportRect - result:', { left, top, width, height });
 
