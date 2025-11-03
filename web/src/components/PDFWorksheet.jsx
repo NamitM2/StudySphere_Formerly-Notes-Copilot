@@ -165,16 +165,28 @@ export default function PDFWorksheet({
       return;
     }
 
+    // Debounce resize events to prevent excessive re-renders during CSS transitions
+    let resizeTimeout;
     const observer = new ResizeObserver(() => {
       if (hasManualScaleRef.current) {
         return;
       }
-      computeFitScale(currentPage);
+      // Clear previous timeout
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+      // Wait for 350ms (slightly longer than the 300ms transition) before recomputing scale
+      resizeTimeout = setTimeout(() => {
+        computeFitScale(currentPage);
+      }, 350);
     });
 
     observer.observe(container);
 
     return () => {
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
       observer.disconnect();
     };
   }, [pdf, computeFitScale, currentPage]);
@@ -526,7 +538,7 @@ export default function PDFWorksheet({
     // Y-axis with 5/3 causes drift - boxes are too low at bottom (over-scaled)
     // This means we need a SMALLER Y scale factor
     const EMPIRICAL_SCALE_X = 5 / 3; // 1.6667 - works perfectly for X
-    const EMPIRICAL_SCALE_Y = 1.47;  // Reduced from 1.67 to compensate for drift
+    const EMPIRICAL_SCALE_Y = 1.61;  // Fine-tuned for Y-axis alignment
 
     console.log('[PDFWorksheet] Scale factors:', {
       pdfDimensions: `${pdfWidth.toFixed(2)} × ${pdfHeight.toFixed(2)}`,
